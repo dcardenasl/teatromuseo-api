@@ -1,0 +1,227 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: Test PHP ${{ matrix.php-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.2', '8.3', '8.4', '8.5']
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_DATABASE: ci4_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: mysqli, mbstring, intl, json
+          coverage: ${{ matrix.php-version == '8.2' && 'xdebug' || 'none' }}
+
+      - name: Strip local path repositories (CI resolves from Packagist)
+        run: php scripts/ci-strip-local-repos.php
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Cache Composer packages
+        id: composer-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-${{ matrix.php-version }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Prepare writable directories
+        run: |
+          mkdir -p writable/cache
+          mkdir -p writable/logs
+          mkdir -p writable/session
+          mkdir -p writable/uploads
+          mkdir -p writable/debugbar
+          chmod -R 777 writable
+
+      - name: Create .env file from example
+        run: cp .env.example .env
+
+      - name: Configure testing environment
+        run: |
+          # Set environment
+          echo 'CI_ENVIRONMENT = testing' >> .env
+          echo 'app.baseURL = "http://localhost/"' >> .env
+
+          # Database configuration for tests
+          sed -i 's/^database.tests.hostname =.*/database.tests.hostname = 127.0.0.1/' .env
+          sed -i 's/^database.tests.database =.*/database.tests.database = ci4_test/' .env
+          sed -i 's/^database.tests.username =.*/database.tests.username = ci4/' .env
+          sed -i 's/^database.tests.password =.*/database.tests.password = ci4/' .env
+          sed -i 's/^database.tests.DBDriver =.*/database.tests.DBDriver = MySQLi/' .env
+          sed -i 's/^database.tests.DBPrefix =.*/database.tests.DBPrefix = ""/' .env
+          sed -i 's/^database.tests.port =.*/database.tests.port = 3306/' .env
+
+          # Generate JWT secret for testing (properly quoted)
+          JWT_KEY=$(openssl rand -base64 64 | tr -d '\n')
+          echo "JWT_SECRET_KEY = \"${JWT_KEY}\"" >> .env
+
+          # Generate encryption key (properly quoted)
+          ENC_KEY="hex2bin:$(openssl rand -hex 32)"
+          echo "encryption.key = \"${ENC_KEY}\"" >> .env
+
+          # Email configuration for testing (override .env.example)
+          sed -i 's/^EMAIL_FROM_ADDRESS =.*/EMAIL_FROM_ADDRESS = noreply@example.com/' .env
+          sed -i 's/^EMAIL_FROM_NAME =.*/EMAIL_FROM_NAME = "API Application"/' .env
+          sed -i 's/^EMAIL_PROVIDER =.*/EMAIL_PROVIDER = smtp/' .env
+          sed -i 's/^EMAIL_SMTP_HOST =.*/EMAIL_SMTP_HOST = localhost/' .env
+          sed -i 's/^EMAIL_SMTP_PORT =.*/EMAIL_SMTP_PORT = 25/' .env
+          sed -i 's/^EMAIL_SMTP_USER =.*/EMAIL_SMTP_USER = ""/' .env
+          sed -i 's/^EMAIL_SMTP_PASS =.*/EMAIL_SMTP_PASS = ""/' .env
+          sed -i 's/^EMAIL_SMTP_CRYPTO =.*/EMAIL_SMTP_CRYPTO = ""/' .env
+
+          # File upload configuration for testing (override to exclude txt)
+          sed -i 's/^FILE_ALLOWED_TYPES =.*/FILE_ALLOWED_TYPES = jpg,jpeg,png,gif,pdf/' .env
+
+      - name: Validate environment configuration
+        run: php spark env:check
+
+      - name: Validate Swagger documentation
+        run: composer swagger-validate
+
+      - name: Verify PHPUnit configuration
+        run: |
+          echo "Checking for phpunit.xml..."
+          if [ ! -f "phpunit.xml" ]; then
+            echo "❌ phpunit.xml not found!"
+            exit 1
+          fi
+          echo "✓ phpunit.xml found"
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -u root -proot --silent; then
+              echo "✓ MySQL is ready"
+              break
+            fi
+            echo "Waiting for MySQL... ($i/30)"
+            sleep 2
+          done
+
+      - name: Verify database connection
+        run: |
+          echo "Testing database connection..."
+          mysql -h 127.0.0.1 -u root -proot -e "SHOW DATABASES;"
+          echo "✓ Database connection successful"
+
+      - name: Ensure database users and grants
+        run: |
+          mysql -h 127.0.0.1 -u root -proot -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';"
+          mysql -h 127.0.0.1 -u root -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
+          mysql -h 127.0.0.1 -u root -proot -e "SET GLOBAL wait_timeout=28800; SET GLOBAL interactive_timeout=28800; SET GLOBAL net_read_timeout=600; SET GLOBAL net_write_timeout=600; SET GLOBAL max_allowed_packet=67108864; SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;"
+          mysql -h 127.0.0.1 -u root -proot -e "CREATE USER IF NOT EXISTS 'ci4'@'%' IDENTIFIED BY 'ci4';"
+          mysql -h 127.0.0.1 -u root -proot -e "GRANT ALL PRIVILEGES ON ci4_test.* TO 'ci4'@'%';"
+          mysql -h 127.0.0.1 -u root -proot -e "FLUSH PRIVILEGES;"
+
+      - name: Code quality gates
+        run: |
+          composer cs-check
+          composer phpstan
+          composer swagger-validate
+          composer arch-drift
+          composer i18n-check
+          composer docs-i18n-check
+
+      - name: Prepare test database
+        run: php spark tests:prepare-db
+
+      - name: Run unit tests
+        run: vendor/bin/phpunit --testsuite=Unit --no-coverage --testdox
+
+      - name: Run integration tests
+        run: vendor/bin/phpunit --testsuite=Integration --no-coverage --testdox
+
+      - name: Run feature tests
+        run: vendor/bin/phpunit --testsuite=Feature --no-coverage --testdox
+
+      - name: Coverage gate (>= 47.15% line coverage)
+        if: matrix.php-version == '8.2'
+        run: |
+          composer test:coverage
+          composer coverage:check
+
+  ci4-compatibility:
+    name: CI4 ${{ matrix.ci4-version }} / PHP ${{ matrix.php-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.2', '8.3']
+        ci4-version: ['4.7.*']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: mysqli, mbstring, intl, json
+          coverage: none
+
+      - name: Strip local path repositories (CI resolves from Packagist)
+        run: php scripts/ci-strip-local-repos.php
+
+      - name: Install dependencies with pinned CI4 version
+        run: |
+          composer remove codeigniter4/framework --no-update
+          composer require "codeigniter4/framework:${{ matrix.ci4-version }}" --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare writable directories
+        run: |
+          mkdir -p writable/cache writable/logs writable/session writable/uploads writable/debugbar
+          chmod -R 777 writable
+
+      - name: Create minimal .env
+        run: |
+          cp .env.example .env
+          echo 'CI_ENVIRONMENT = testing' >> .env
+          echo 'app.baseURL = "http://localhost/"' >> .env
+          JWT_KEY=$(openssl rand -base64 64 | tr -d '\n')
+          echo "JWT_SECRET_KEY = \"${JWT_KEY}\"" >> .env
+          ENC_KEY="hex2bin:$(openssl rand -hex 32)"
+          echo "encryption.key = \"${ENC_KEY}\"" >> .env
+
+      - name: Run Unit tests (no DB required)
+        run: vendor/bin/phpunit --testsuite=Unit --no-coverage

@@ -1,0 +1,95 @@
+services:
+  # CodeIgniter 4 API Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ci4-api-app
+    restart: unless-stopped
+    ports:
+      - "${API_HOST_PORT:-8080}:80"
+    environment:
+      # Consumed by docker/entrypoint.sh on first start to stamp .env so that
+      # CI4 (which reads .env ahead of OS env) sees the Docker DB settings.
+      - CI_ENVIRONMENT=${CI_ENVIRONMENT:-development}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:8080}
+      - DB_HOST=db
+      - DB_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-ci4_website_builder_api}
+      - MYSQL_USER=${MYSQL_USER:-ci4_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-ci4_dev_password}
+    volumes:
+      - ./writable:/var/www/html/writable
+      - ./public/swagger.json:/var/www/html/public/swagger.json
+      - api-env:/var/www/html/.env-store
+    networks:
+      - ci4-platform
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: ci4-api-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ci4_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ci4_website_builder_api}
+      MYSQL_USER: ${MYSQL_USER:-ci4_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ci4_dev_password}
+    ports:
+      - "${DB_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - ci4-platform
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    command: --default-authentication-plugin=mysql_native_password
+
+  # phpMyAdmin (optional — enable with `docker compose --profile tools up`)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: ci4-api-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "${PHPMYADMIN_HOST_PORT:-8081}:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER:-ci4_user}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-ci4_dev_password}
+      UPLOAD_LIMIT: 50M
+    networks:
+      - ci4-platform
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - tools
+
+# Shared bridge network across all ci4-platform repos (admin + api + domain).
+# `name:` (without `external:`) makes compose create or attach idempotently —
+# no prior `docker network create` step required. Admin's compose targets the
+# same name, so containers resolve each other by service name when both stacks
+# are running.
+networks:
+  ci4-platform:
+    name: ci4-platform
+
+volumes:
+  mysql-data:
+    name: ci4-mysql-data
+  api-env:
+    name: ci4-api-env

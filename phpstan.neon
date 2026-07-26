@@ -1,0 +1,94 @@
+includes:
+    - phpstan-baseline.neon
+
+rules:
+    - App\PHPStan\Rules\ServiceDtoFirstRule
+
+parameters:
+    level: 8
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+    paths:
+        - app/Controllers
+        - app/Services
+        - app/Models
+        - app/Libraries
+        - app/Entities
+        - app/Filters
+        - app/Interfaces
+        - app/DTO
+        - app/Repositories
+        - app/Commands
+        - app/Support
+    parallel:
+        jobSize: 20
+        processTimeout: 600.0
+        maximumNumberOfProcesses: 0
+        minimumNumberOfJobsPerProcess: 2
+        buffer: 134217728
+    excludePaths:
+        - vendor
+        - writable
+        - tests/_support (?)
+        - app/Config
+        - app/Views
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false
+    # ignoreErrors limited to CI4 framework-dynamic patterns (not real bugs).
+    # Tech-debt-style errors (missingType.iterableValue, real argument.type
+    # mismatches) are captured in phpstan-baseline.neon below and shrunk over
+    # time. New errors of those kinds will fail CI.
+    ignoreErrors:
+        # CI4 helper functions and framework constants are stubbed in
+        # phpstan-bootstrap.php. ENVIRONMENT is deliberately left undefined there
+        # so `ENVIRONMENT === 'production'` stays runtime-unknown (not always-false).
+        - '#Constant ENVIRONMENT not found#'
+        # CI4 query builder + magic methods
+        - '#Call to an undefined method CodeIgniter\\Database\\BaseBuilder::#'
+        # CI4 Entity dynamic properties (Entity uses __get/__set)
+        - '#Access to an undefined property App\\Entities\\.*::\$#'
+        # CI4 controller magic methods (request, response, etc.)
+        - '#Call to an undefined method App\\Controllers\\.*::(request|response|getVarString|getGetString|getVarInt|respondForbidden)\(\)#'
+        # Generic object access — appears when a service returns mixed-shape
+        # untyped data; should be progressively typed but not blocking.
+        - '#Call to an undefined method object::#'
+        - '#Access to an undefined property object::#'
+        # dcardenasl\Ci4ApiCore\Dto\BaseRequestDTO::__construct() calls the
+        # abstract map() method to assign every readonly property. map() is
+        # only ever invoked from that constructor, so the object is fully
+        # immutable once built — but PHPStan's readonly analysis only
+        # recognizes assignment written literally inside __construct(), not a
+        # method called exclusively from it. Every generated Request DTO hits
+        # this false positive; scoped to app/DTO so a real "readonly assigned
+        # somewhere unexpected" bug elsewhere still fails the build.
+        -
+            identifier: property.readOnlyAssignNotInConstructor
+            path: app/DTO/*
+        -
+            identifier: property.uninitializedReadonly
+            path: app/DTO/*
+        # Config\DomainPermissions::PERMISSIONS is an intentionally-empty
+        # template placeholder in this hub — the hub's own permissions come
+        # from RbacBootstrapSeeder, not this constant (see
+        # docs/tech/iam-permissions-resolution.md). `iam:sync-permissions`
+        # only does something once/if this constant is populated; PHPStan
+        # correctly (but unhelpfully) flags the loop as dead against today's
+        # literal `[]`.
+        -
+            identifier: foreach.emptyArray
+            path: app/Commands/SyncOwnPermissions.php
+        -
+            identifier: nullCoalesce.offset
+            path: app/Commands/SyncOwnPermissions.php
+        # dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface::toArray()
+        # declares @return array<string, mixed>. MetricsPayloadResponseDTO is
+        # a deliberately generic wrapper ("preserving original shape" per its
+        # own docblock) around metrics payloads that are sometimes plain
+        # numeric-indexed lists (e.g. getSlowRequests()). Re-keying the
+        # payload to satisfy the narrower interface contract would change the
+        # actual JSON response shape for consumers — not a PHPStan cleanup to
+        # make silently. The interface contract is simply too narrow for this
+        # one intentionally-generic DTO.
+        -
+            identifier: return.type
+            path: app/DTO/Response/Metrics/MetricsPayloadResponseDTO.php

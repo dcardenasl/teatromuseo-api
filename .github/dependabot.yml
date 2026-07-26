@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+    reviewers:
+      - "dcardenasl"
+    assignees:
+      - "dcardenasl"
+    labels:
+      - "dependencies"
+      - "php"
+    ignore:
+      # First-party packages managed via path repositories locally and bumped
+      # manually as part of platform release coordination — not via Dependabot.
+      - dependency-name: "dcardenasl/ci4-api-core"
+      - dependency-name: "dcardenasl/ci4-api-scaffolding"

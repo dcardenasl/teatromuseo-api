@@ -1,0 +1,4 @@
+interface:
+  display_name: "CI4 CRUD Expert"
+  short_description: "Crear CRUDs completos en este CI4 API starter"
+  default_prompt: "Usa $ci4-api-crud-expert para implementar un CRUD nuevo end-to-end en este repositorio."

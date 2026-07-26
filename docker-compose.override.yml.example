@@ -1,0 +1,35 @@
+# Docker Compose Override Example
+#
+# Copy this file to docker-compose.override.yml for local development
+# This file is ignored by git and allows you to customize your local environment
+#
+# Command: cp docker-compose.override.yml.example docker-compose.override.yml
+
+version: '3.8'
+
+services:
+  # Application service overrides for development
+  app:
+    # Mount source code for live development
+    # Uncomment these lines to enable hot-reload
+    # volumes:
+    #   - ./app:/var/www/html/app
+    #   - ./public:/var/www/html/public
+
+    # Override environment for development
+    # environment:
+    #   - CI_ENVIRONMENT=development
+
+  # Database service overrides
+  db:
+    # Expose MySQL port for local tools (MySQL Workbench, DBeaver, etc.)
+    # ports:
+    #   - "3307:3306"
+
+    # Custom MySQL configuration for development
+    # command: --general-log=1 --general-log-file=/var/log/mysql/general.log
+
+  # Enable phpMyAdmin for local development
+  # Uncomment to use:
+  # phpmyadmin:
+  #   profiles: []  # Remove profile to start by default

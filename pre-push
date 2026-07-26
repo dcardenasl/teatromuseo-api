@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# Non-blocking reminder hook, not a gate: if this checkout lives inside the
+# ci4-website-starter monorepo layout (this repo's parent directory has a
+# scripts/check-platform-freshness.sh) AND we're pushing refs/heads/dev, run
+# that consolidated check and print its output as a warning. NEVER blocks
+# the push (always exits 0) and is a silent no-op in a standalone clone of
+# this repo — that has to keep working, it's the whole point of this repo
+# being independently deployable.
+#
+# Installed by composer's post-install-cmd/post-update-cmd, same mechanism
+# as the pre-commit hook next to this file.
+
+REPO_LABEL="ci4-website-builder-api"
+
+pushing_to_dev=false
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+    if [ "${local_ref}" = "refs/heads/dev" ] || [ "${remote_ref}" = "refs/heads/dev" ]; then
+        pushing_to_dev=true
+    fi
+done
+
+if [ "${pushing_to_dev}" != "true" ]; then
+    exit 0
+fi
+
+FRESHNESS_SCRIPT="../scripts/check-platform-freshness.sh"
+if [ ! -f "${FRESHNESS_SCRIPT}" ]; then
+    # Standalone clone, not inside the monorepo layout — nothing to check.
+    exit 0
+fi
+
+echo "[${REPO_LABEL}] pushing dev — checking monorepo platform freshness (informational only, never blocks)..." >&2
+bash "${FRESHNESS_SCRIPT}" >&2 || true
+
+exit 0
