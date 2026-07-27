@@ -58,6 +58,8 @@ final class LegacyApplyService
         $this->loadCmsCatalog();
         if ($slice === 'B') {
             $this->applyCourses($tables, $runId);
+        } elseif ($slice === 'C') {
+            $this->applySliceC($tables, $runId);
         } else {
             $this->applyWorks($tables, $runId);
         }
@@ -778,14 +780,14 @@ final class LegacyApplyService
         return null;
     }
 
-    private function findCmsBlock(int $entryId, int $blockId, ?int $parentId, int $sortOrder, ?int $fileId): ?int
+    private function findCmsBlock(int $entryId, int $blockId, ?int $parentId, int $sortOrder, ?int $fileId, string $ownerType = 'entry'): ?int
     {
         if ($this->cmsBlockInstances === null) {
             $this->cmsBlockInstances = $this->list($this->cms->get('/cms/block-instances', ['per_page' => 10000]));
         }
 
         foreach ($this->cmsBlockInstances as $item) {
-            if ((int) ($item['block_id'] ?? 0) !== $blockId || (string) ($item['owner_type'] ?? '') !== 'entry' || (int) ($item['owner_id'] ?? 0) !== $entryId || (int) ($item['sort_order'] ?? 0) !== $sortOrder) {
+            if ((int) ($item['block_id'] ?? 0) !== $blockId || (string) ($item['owner_type'] ?? '') !== $ownerType || (int) ($item['owner_id'] ?? 0) !== $entryId || (int) ($item['sort_order'] ?? 0) !== $sortOrder) {
                 continue;
             }
             $candidateParentId = $this->positiveId($item['parent_instance_id'] ?? null);
@@ -996,5 +998,408 @@ final class LegacyApplyService
         $hash[6] = chr((ord($hash[6]) & 0x0f) | 0x50);
         $hash[8] = chr((ord($hash[8]) & 0x3f) | 0x80);
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex(substr($hash, 0, 16)), 4));
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applySliceC(array $tables, int $runId): void
+    {
+        // 1. Exposiciones
+        $this->applyExposiciones($tables, $runId);
+
+        // 2. Noticias
+        $this->applyNoticias($tables, $runId);
+
+        // 3. Publicaciones
+        $this->applyPublicaciones($tables, $runId);
+
+        // 4. Festivales
+        $this->applyFestivales($tables, $runId);
+
+        // 5. Funcionarios
+        $this->applyFuncionarios($tables, $runId);
+
+        // 6. Museo
+        $this->applyMuseo($tables, $runId);
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyExposiciones(array $tables, int $runId): void
+    {
+        $expoRows = $this->visibleRows($tables['sn_expo'] ?? [], 'display');
+        usort($expoRows, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
+        $expoRows = array_slice($expoRows, 0, 10);
+
+        $allExpoImages = $tables['sn_expo_img'] ?? [];
+        $imagesByExpo = [];
+        foreach ($allExpoImages as $img) {
+            $eid = $this->stringValue($img['expo_id'] ?? '');
+            if ($eid !== '' && ($this->numericId($img, 'display') === 1)) {
+                $imagesByExpo[$eid][] = $img;
+            }
+        }
+
+        foreach ($expoRows as $expo) {
+            $id = $this->stringValue($expo['id'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+            $slug = $this->slug((string) ($expo['url'] ?: $expo['titulo'] ?: 'expo-' . $id));
+
+            $expoImages = $imagesByExpo[$id] ?? [];
+            $coverFileId = null;
+            if ($expoImages !== []) {
+                $coverImg = $expoImages[0];
+                $coverPath = $this->stringValue($coverImg['img'] ?? '');
+                $coverId = $this->stringValue($coverImg['id'] ?? '');
+                if ($coverPath !== '') {
+                    $coverFileId = $this->assetFile('sn_expo_img', $coverId, $coverPath, 'expo-cover-' . $coverId, $runId);
+                }
+            }
+
+            $wizardExtra = [
+                'author_text' => $this->stringValue($expo['autor'] ?? ''),
+                'opening_date' => $this->validDate($expo['fecha_desde'] ?? null) ? $this->stringValue($expo['fecha_desde']) : null,
+                'closing_date' => $this->validDate($expo['fecha_hasta'] ?? null) ? $this->stringValue($expo['fecha_hasta']) : null,
+                'description' => $this->stringValue($expo['descripcion'] ?? ''),
+            ];
+
+            $entryId = $this->applyCmsEntry(
+                'sn_expo',
+                $id,
+                'exposiciones',
+                $slug,
+                $this->stringValue($expo['titulo'] ?? 'Exposición'),
+                $this->stringValue($expo['descripcion'] ?? ''),
+                $wizardExtra,
+                $runId,
+                $coverFileId
+            );
+
+            if (count($expoImages) > 1) {
+                $galleryImages = array_slice($expoImages, 1);
+                $this->applyGallery('sn_expo', $id, (int) $entryId, $galleryImages, $runId, 'img', 'id', 'id');
+            }
+        }
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyNoticias(array $tables, int $runId): void
+    {
+        $newsRows = $this->visibleRows($tables['sn_noticias'] ?? [], 'disp_noticias');
+        usort($newsRows, fn (array $left, array $right): int => $this->numericId($left, 'id_noticias') <=> $this->numericId($right, 'id_noticias'));
+        $newsRows = array_slice($newsRows, 0, 20);
+
+        foreach ($newsRows as $news) {
+            $id = $this->stringValue($news['id_noticias'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+            $slug = $this->slug((string) ($news['url'] ?: $news['titulo'] ?: 'noticia-' . $id));
+
+            $coverFileId = null;
+            $coverPath = $this->stringValue($news['foto'] ?? '');
+            if ($coverPath !== '') {
+                $coverFileId = $this->assetFile('sn_noticias', $id, $coverPath, 'news-cover-' . $id, $runId);
+            }
+
+            $wizardExtra = [
+                'publish_date' => $this->validDate($news['fecha'] ?? null) ? $this->stringValue($news['fecha']) : null,
+                'lead' => $this->stringValue($news['lead'] ?? ''),
+            ];
+
+            $entryId = $this->applyCmsEntry(
+                'sn_noticias',
+                $id,
+                'news',
+                $slug,
+                $this->stringValue($news['titulo'] ?? 'Noticia'),
+                $this->stringValue($news['lead'] ?? ''),
+                $wizardExtra,
+                $runId,
+                $coverFileId
+            );
+
+            $cuerpo = $this->stringValue($news['cuerpo'] ?? '');
+            if ($cuerpo !== '') {
+                $richTextBlockId = $this->blockTypes['rich_text'] ?? throw new \RuntimeException('CMS block type rich_text is not configured.');
+                $recoveredBlockId = $this->findCmsBlock($entryId, $richTextBlockId, null, 10, null);
+                if ($recoveredBlockId !== null) {
+                    $this->map($runId, 'sn_noticias', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic body block lookup');
+                    $this->summary['reused']['blocks']++;
+                } else {
+                    $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
+                        'block_id' => $richTextBlockId,
+                        'owner_type' => 'entry',
+                        'owner_id' => $entryId,
+                        'parent_instance_id' => null,
+                        'sort_order' => 10,
+                        'column_index' => null,
+                        'is_active' => true,
+                        'block_config' => ['css_class' => ''],
+                        'translations' => [
+                            [
+                                'language_id' => $this->spanishLanguageId(),
+                                'block_data' => ['content' => $cuerpo],
+                                'is_published' => true,
+                            ]
+                        ],
+                    ]);
+                    $blockId = $this->extractId($response);
+                    $this->rememberCmsBlock($blockId, $richTextBlockId, $entryId, null, 10, null);
+                    $this->map($runId, 'sn_noticias', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'rich text body block');
+                    $this->summary['created']['blocks']++;
+                }
+            }
+        }
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyPublicaciones(array $tables, int $runId): void
+    {
+        $pubSources = [
+            'sn_editorial' => 'editorial',
+            'sn_prensa' => 'press',
+            'sn_administracion' => 'transparency',
+        ];
+        $pubLimit = 30;
+        $pubCount = 0;
+
+        foreach ($pubSources as $table => $type) {
+            if ($pubCount >= $pubLimit) {
+                break;
+            }
+            $pubRows = $this->visibleRows($tables[$table] ?? [], 'display');
+            usort($pubRows, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
+            $selectedPubs = array_slice($pubRows, 0, max(0, $pubLimit - $pubCount));
+            $pubCount += count($selectedPubs);
+
+            foreach ($selectedPubs as $pub) {
+                $id = $this->stringValue($pub['id'] ?? '');
+                if ($id === '') {
+                    $this->summary['issues']++;
+                    continue;
+                }
+                $slug = $this->slug((string) (($pub['url'] ?? $pub['link'] ?? $pub['titulo'] ?? '') ?: $type . '-' . $id));
+
+                $coverFileId = null;
+                $coverPath = $this->stringValue($pub['foto'] ?? '');
+                if ($coverPath !== '') {
+                    $coverFileId = $this->assetFile($table, $id, $coverPath, 'pub-cover-' . $id, $runId);
+                }
+
+                $wizardExtra = [
+                    'publication_type' => $type,
+                    'publish_date' => $this->validDate($pub['fecha'] ?? null) ? $this->stringValue($pub['fecha']) : null,
+                    'external_link' => $this->stringValue($pub['link'] ?? ''),
+                ];
+
+                $entryId = $this->applyCmsEntry(
+                    $table,
+                    $id,
+                    'publicaciones',
+                    $slug,
+                    $this->stringValue($pub['titulo'] ?? 'Publicación'),
+                    $this->stringValue($pub['descripcion'] ?? ''),
+                    $wizardExtra,
+                    $runId,
+                    $coverFileId
+                );
+
+                $pdfPath = $this->stringValue($pub['archivo'] ?? '');
+                if ($pdfPath !== '') {
+                    $pdfFileId = $this->assetFile($table, $id . ':pdf', $pdfPath, 'pub-pdf-' . $id, $runId);
+                    if ($pdfFileId !== null) {
+                        $this->createDocumentBlock($table, $id . ':pdf', (int) $entryId, $pdfFileId, $this->stringValue($pub['titulo'] ?? 'Documento'), $runId);
+                    }
+                }
+            }
+        }
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyFestivales(array $tables, int $runId): void
+    {
+        $upaRows = $tables['sn_upa'] ?? [];
+        foreach ($upaRows as $upa) {
+            $id = $this->stringValue($upa['id_upa'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+            $slug = 'upa-chalupa-2019';
+
+            $wizardExtra = [
+                'subtitle' => $this->stringValue($upa['pie'] ?? ''),
+            ];
+
+            $entryId = $this->applyCmsEntry(
+                'sn_upa',
+                $id,
+                'festivales',
+                $slug,
+                $this->stringValue($upa['titulo'] ?? 'Festival Upa Chalupa'),
+                $this->stringValue($upa['pie'] ?? ''),
+                $wizardExtra,
+                $runId
+            );
+
+            $cuerpo = $this->stringValue($upa['cuerpo'] ?? '');
+            if ($cuerpo !== '') {
+                $richTextBlockId = $this->blockTypes['rich_text'] ?? throw new \RuntimeException('CMS block type rich_text is not configured.');
+                $recoveredBlockId = $this->findCmsBlock($entryId, $richTextBlockId, null, 10, null);
+                if ($recoveredBlockId !== null) {
+                    $this->map($runId, 'sn_upa', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic body block lookup');
+                    $this->summary['reused']['blocks']++;
+                } else {
+                    $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
+                        'block_id' => $richTextBlockId,
+                        'owner_type' => 'entry',
+                        'owner_id' => $entryId,
+                        'parent_instance_id' => null,
+                        'sort_order' => 10,
+                        'column_index' => null,
+                        'is_active' => true,
+                        'block_config' => ['css_class' => ''],
+                        'translations' => [
+                            [
+                                'language_id' => $this->spanishLanguageId(),
+                                'block_data' => ['content' => $cuerpo],
+                                'is_published' => true,
+                            ]
+                        ],
+                    ]);
+                    $blockId = $this->extractId($response);
+                    $this->rememberCmsBlock($blockId, $richTextBlockId, $entryId, null, 10, null);
+                    $this->map($runId, 'sn_upa', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'rich text body block');
+                    $this->summary['created']['blocks']++;
+                }
+            }
+        }
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyFuncionarios(array $tables, int $runId): void
+    {
+        $staffRows = $this->visibleRows($tables['sn_funcionarios'] ?? [], 'display');
+        usort($staffRows, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
+        $staffRows = array_slice($staffRows, 0, 15);
+
+        foreach ($staffRows as $staff) {
+            $id = $this->stringValue($staff['id'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+            $slug = $this->slug((string) ($staff['nombre'] ?: 'staff-' . $id));
+
+            $coverFileId = null;
+            $coverPath = $this->stringValue($staff['foto1'] ?? $staff['foto2'] ?? '');
+            if ($coverPath !== '') {
+                $coverFileId = $this->assetFile('sn_funcionarios', $id, $coverPath, 'staff-' . $id, $runId);
+            }
+
+            $wizardExtra = [
+                'profession' => $this->stringValue($staff['profesion'] ?? ''),
+                'position' => $this->stringValue($staff['cargo'] ?? ''),
+                'email' => $this->stringValue($staff['correo'] ?? ''),
+                'sort_order' => $this->numericId($staff, 'posicion'),
+            ];
+
+            $this->applyCmsEntry(
+                'sn_funcionarios',
+                $id,
+                'personas',
+                $slug,
+                $this->stringValue($staff['nombre'] ?? 'Funcionario'),
+                $this->stringValue($staff['cargo'] ?? ''),
+                $wizardExtra,
+                $runId,
+                $coverFileId
+            );
+        }
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $tables */
+    private function applyMuseo(array $tables, int $runId): void
+    {
+        $museoRows = $tables['sn_museo'] ?? [];
+        $exposicionesPageId = 7;
+
+        foreach ($museoRows as $museo) {
+            $id = $this->stringValue($museo['id'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+
+            $cuerpo = $this->stringValue($museo['titulo'] ?? '');
+            if ($cuerpo !== '') {
+                $richTextBlockId = $this->blockTypes['rich_text'] ?? throw new \RuntimeException('CMS block type rich_text is not configured.');
+                $recoveredBlockId = $this->findCmsBlock($exposicionesPageId, $richTextBlockId, null, 150, null, 'page');
+                if ($recoveredBlockId !== null) {
+                    $this->map($runId, 'sn_museo', $id . ':rich_text', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic page body lookup');
+                    $this->summary['reused']['blocks']++;
+                } else {
+                    $response = $this->cms->post('/cms/entries/' . $exposicionesPageId . '/blocks', [
+                        'block_id' => $richTextBlockId,
+                        'owner_type' => 'page',
+                        'owner_id' => $exposicionesPageId,
+                        'parent_instance_id' => null,
+                        'sort_order' => 150,
+                        'column_index' => null,
+                        'is_active' => true,
+                        'block_config' => ['css_class' => 'max-w-4xl mx-auto py-8 px-4'],
+                        'translations' => [
+                            [
+                                'language_id' => $this->spanishLanguageId(),
+                                'block_data' => ['content' => $cuerpo],
+                                'is_published' => true,
+                            ]
+                        ],
+                    ]);
+                    $blockId = $this->extractId($response);
+                    $this->rememberCmsBlock($blockId, $richTextBlockId, $exposicionesPageId, null, 150, null);
+                    $this->map($runId, 'sn_museo', $id . ':rich_text', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'page rich text block');
+                    $this->summary['created']['blocks']++;
+                }
+            }
+
+            $imgPath = $this->stringValue($museo['imagen'] ?? '');
+            if ($imgPath !== '') {
+                $fileId = $this->assetFile('sn_museo', $id, $imgPath, 'museum-info-' . $id, $runId);
+                if ($fileId !== null) {
+                    $imageBlockId = $this->blockTypes['image'] ?? throw new \RuntimeException('CMS block type image is not configured.');
+                    $recoveredImgBlockId = $this->findCmsBlock($exposicionesPageId, $imageBlockId, null, 160, $fileId, 'page');
+                    if ($recoveredImgBlockId !== null) {
+                        $this->map($runId, 'sn_museo', $id . ':image', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredImgBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic page image lookup');
+                        $this->summary['reused']['blocks']++;
+                    } else {
+                        $response = $this->cms->post('/cms/entries/' . $exposicionesPageId . '/blocks', [
+                            'block_id' => $imageBlockId,
+                            'owner_type' => 'page',
+                            'owner_id' => $exposicionesPageId,
+                            'parent_instance_id' => null,
+                            'sort_order' => 160,
+                            'column_index' => null,
+                            'is_active' => true,
+                            'block_config' => ['image' => ['source_kind' => 'file', 'file_id' => $fileId]],
+                            'translations' => [
+                                [
+                                    'language_id' => $this->spanishLanguageId(),
+                                    'block_data' => ['alt' => 'Museo Templo del Títere y el Payaso', 'caption' => 'Museo Templo del Títere y el Payaso'],
+                                    'is_published' => true,
+                                ]
+                            ],
+                        ]);
+                        $blockId = $this->extractId($response);
+                        $this->rememberCmsBlock($blockId, $imageBlockId, $exposicionesPageId, null, 160, $fileId);
+                        $this->map($runId, 'sn_museo', $id . ':image', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'page image block');
+                        $this->summary['created']['blocks']++;
+                    }
+                }
+            }
+        }
     }
 }
