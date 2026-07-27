@@ -21,6 +21,7 @@ final class LegacyMigrationCatalog
     public const MAP_MAPPED = 'mapped';
     public const MAP_PLANNED = 'planned';
     public const MAP_DUPLICATE = 'duplicate';
+    public const MAP_SUPPLEMENTAL = 'supplemental';
     public const MAP_QUARANTINED = 'quarantined';
 
     public const RESOLUTION_PENDING = 'pending';
@@ -47,7 +48,7 @@ final class LegacyMigrationCatalog
     /** @return list<string> */
     public static function mapStatuses(): array
     {
-        return [self::MAP_MAPPED, self::MAP_PLANNED, self::MAP_DUPLICATE, self::MAP_QUARANTINED];
+        return [self::MAP_MAPPED, self::MAP_PLANNED, self::MAP_DUPLICATE, self::MAP_SUPPLEMENTAL, self::MAP_QUARANTINED];
     }
 
     /** @return list<string> */

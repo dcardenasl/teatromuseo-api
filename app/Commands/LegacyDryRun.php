@@ -23,7 +23,7 @@ final class LegacyDryRun extends BaseCommand
     protected $description = 'Analyze a legacy SQL slice without writing domain content.';
     protected $usage = 'php spark legacy:dry-run --slice A [--dump /path/dump.sql] [--asset-root /path] [--output /path]';
     protected $options = [
-        '--slice' => 'Slice identifier. Currently supported: A.',
+        '--slice' => 'Slice identifier. Supported: A or B.',
         '--dump' => 'Path to the legacy SQL dump. Defaults to the repository dump.',
         '--asset-root' => 'Optional root directory containing legacy public assets.',
         '--output' => 'Optional output directory for summary.json, mapping.json and CSV reports.',
@@ -33,8 +33,8 @@ final class LegacyDryRun extends BaseCommand
     public function run(array $params): void
     {
         $slice = strtoupper((string) ($this->optionValue('slice') ?: 'A'));
-        if ($slice !== 'A') {
-            CLI::error("Unsupported slice '{$slice}'. Only Slice A is implemented.");
+        if (! in_array($slice, ['A', 'B'], true)) {
+            CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B.");
 
             return;
         }
@@ -46,18 +46,13 @@ final class LegacyDryRun extends BaseCommand
 
         $dumpPath = (string) ($this->optionValue('dump') ?: $this->defaultDumpPath());
         $assetRoot = $this->optionValue('asset-root');
-        $outputDirectory = (string) ($this->optionValue('output') ?: WRITEPATH . 'logs/migration/' . date('Ymd-His') . '-slice-a');
+        $outputDirectory = (string) ($this->optionValue('output') ?: WRITEPATH . 'logs/migration/' . date('Ymd-His') . '-slice-' . strtolower($slice));
         $runId = null;
 
         try {
             $reader = new LegacySqlDumpReader($dumpPath);
             $sourceHash = $reader->sourceHash();
-            $tables = $reader->rowsForTables([
-                'sn_compania',
-                'sn_obra',
-                'sn_slider_cartelera',
-                'sn_youtube',
-            ]);
+            $tables = $reader->rowsForTables($this->tablesForSlice($slice));
 
             $repository = new LegacyMigrationRepository(Database::connect());
             $runId = $repository->createRun(
@@ -70,28 +65,24 @@ final class LegacyDryRun extends BaseCommand
             $assetResolver = is_string($assetRoot) && trim($assetRoot) !== ''
                 ? new LegacyAssetResolver($assetRoot)
                 : null;
-            $report = (new LegacySliceAAnalyzer($assetResolver))->analyze(
-                $tables,
-                $dumpPath,
-                $sourceHash
-            );
+            $report = $this->analyzeSlice($slice, $tables, $dumpPath, $sourceHash, $assetResolver);
 
             $this->writeReport($outputDirectory, $report);
             $this->persistReport($repository, $runId, $sourceHash, $report);
             $repository->finishRun($runId, LegacyMigrationCatalog::RUN_COMPLETED, $report['summary']);
 
             $summary = $report['summary'];
-            CLI::write('Legacy Slice A dry-run completed.', 'green');
+            CLI::write("Legacy Slice {$slice} dry-run completed.", 'green');
             CLI::write('run_id=' . $runId, 'cyan');
             CLI::write('report=' . $outputDirectory, 'cyan');
             CLI::write(sprintf(
                 'targets: cms_entries=%d events=%d occurrences=%d gallery_items=%d videos=%d issues=%d',
-                $summary['targets_planned']['cms_entries'],
-                $summary['targets_planned']['event_events'],
-                $summary['targets_planned']['event_occurrences'],
-                $summary['targets_planned']['cms_gallery_items'],
-                $summary['slice_rows_selected']['videos'],
-                $summary['issues']
+                (int) ($summary['targets_planned']['cms_entries'] ?? 0),
+                (int) ($summary['targets_planned']['event_events'] ?? 0),
+                (int) ($summary['targets_planned']['event_occurrences'] ?? 0),
+                (int) ($summary['targets_planned']['cms_gallery_items'] ?? 0),
+                (int) ($summary['slice_rows_selected']['videos'] ?? 0),
+                (int) ($summary['issues'] ?? 0)
             ));
         } catch (\Throwable $exception) {
             if ($runId !== null) {
@@ -107,8 +98,29 @@ final class LegacyDryRun extends BaseCommand
                 }
             }
 
-            CLI::error('Legacy Slice A dry-run failed: ' . $exception->getMessage());
+            CLI::error("Legacy Slice {$slice} dry-run failed: " . $exception->getMessage());
         }
+    }
+
+    /** @return list<string> */
+    private function tablesForSlice(string $slice): array
+    {
+        return $slice === 'B'
+            ? ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela']
+            : ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube'];
+    }
+
+    /**
+     * @param array<string, list<array<string, mixed>>> $tables
+     * @return array{summary: array<string, mixed>, mappings: list<array<string, mixed>>, issues: list<array<string, mixed>>, quarantine: list<array<string, mixed>>, assets: list<array<string, mixed>>}
+     */
+    private function analyzeSlice(string $slice, array $tables, string $dumpPath, string $sourceHash, ?LegacyAssetResolver $assetResolver): array
+    {
+        if ($slice === 'B') {
+            return (new \App\Libraries\LegacyMigration\LegacySliceBAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
+        }
+
+        return (new LegacySliceAAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
     }
 
     private function defaultDumpPath(): string
@@ -151,7 +163,7 @@ final class LegacyDryRun extends BaseCommand
             'legacy_table', 'legacy_id', 'issue_class', 'severity', 'field', 'original_value', 'applied_value', 'note',
         ]);
         $this->writeCsv($directory . '/quarantine.csv', $report['quarantine'], [
-            'legacy_table', 'legacy_id', 'error_class', 'error_message',
+            'legacy_table', 'legacy_id', 'error_class', 'error_message', 'raw_row',
         ]);
     }
 
@@ -188,6 +200,17 @@ final class LegacyDryRun extends BaseCommand
                 $issue['applied_value'] ?? null,
                 (string) ($issue['note'] ?? ''),
                 (string) ($issue['severity'] ?? 'warning')
+            );
+        }
+
+        foreach ($report['quarantine'] as $quarantined) {
+            $repository->quarantine(
+                $runId,
+                (string) $quarantined['legacy_table'],
+                (string) $quarantined['legacy_id'],
+                is_array($quarantined['raw_row'] ?? null) ? $quarantined['raw_row'] : [],
+                (string) $quarantined['error_class'],
+                (string) $quarantined['error_message']
             );
         }
     }

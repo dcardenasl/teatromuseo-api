@@ -118,6 +118,31 @@ final class LegacyMigrationRepository
         return (int) $this->db->insertID();
     }
 
+    /**
+     * Returns the current mapping for one source identity and target shape.
+     * The control plane is the idempotency boundary for apply retries.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findMap(string $legacyTable, string $legacyId, string $targetSystem, string $targetType): ?array
+    {
+        $this->assertSourceIdentity($legacyTable, $legacyId);
+        $this->assertTargetIdentity($targetSystem, $targetType);
+
+        $result = $this->db->table('legacy_migration_map')
+            ->where('legacy_table', $legacyTable)
+            ->where('legacy_id', $legacyId)
+            ->where('target_system', $targetSystem)
+            ->where('target_type', $targetType)
+            ->get();
+        if ($result === false) {
+            throw new \RuntimeException('Unable to query legacy migration map.');
+        }
+        $row = $result->getRowArray();
+
+        return $row === null ? null : $row;
+    }
+
     public function recordIssue(
         int $runId,
         string $legacyTable,

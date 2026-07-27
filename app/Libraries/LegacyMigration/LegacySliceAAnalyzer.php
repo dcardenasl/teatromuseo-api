@@ -43,6 +43,7 @@ final class LegacySliceAAnalyzer
 
         $issues = [];
         $mappings = [];
+        $quarantine = [];
         $assets = [];
         $workGroups = [];
         foreach ($selectedWorks as $work) {
@@ -134,17 +135,46 @@ final class LegacySliceAAnalyzer
             $allWorkIds[$this->stringValue($work['id_obra'] ?? '')] = true;
         }
         $galleryCount = 0;
+        $galleryOwners = [];
         foreach ($this->visibleRows($tables['sn_slider_cartelera'] ?? [], 'display') as $image) {
             $legacyId = $this->stringValue($image['id_slider'] ?? '');
             $workId = $this->stringValue($image['id_obra'] ?? '');
             if (! isset($selectedWorkIds[$workId])) {
                 if (! isset($allWorkIds[$workId])) {
                     $issues[] = $this->issue('sn_slider_cartelera', $legacyId, 'fk_missing', 'id_obra', 'Gallery item points to an unknown work.', 'warning');
+                    $orphanMapping = $this->mapping(
+                        'sn_slider_cartelera',
+                        $legacyId,
+                        LegacyMigrationCatalog::TARGET_CMS,
+                        'gallery_item',
+                        'orphan-gallery:' . $legacyId,
+                        $sourceHash
+                    );
+                    $orphanMapping['status'] = LegacyMigrationCatalog::MAP_QUARANTINED;
+                    $mappings[] = $orphanMapping;
+                    $quarantine[] = $this->quarantine(
+                        'sn_slider_cartelera',
+                        $legacyId,
+                        'fk_missing',
+                        'Gallery item points to an unknown work.',
+                        $image
+                    );
                 }
                 continue;
             }
             $galleryCount++;
             $work = $this->findRow($selectedWorks, 'id_obra', $workId);
+            if (! isset($galleryOwners[$workId])) {
+                $galleryOwners[$workId] = true;
+                $mappings[] = $this->mapping(
+                    'sn_obra',
+                    $workId . ':gallery',
+                    LegacyMigrationCatalog::TARGET_CMS,
+                    'gallery',
+                    'obras:' . $this->workKey($work ?? []) . ':gallery',
+                    $sourceHash
+                );
+            }
             $mappings[] = $this->mapping(
                 'sn_slider_cartelera',
                 $legacyId,
@@ -217,11 +247,11 @@ final class LegacySliceAAnalyzer
                     'cms_gallery_items' => $galleryCount,
                 ],
                 'issues' => count($issues),
-                'quarantine' => 0,
+                'quarantine' => count($quarantine),
             ],
             'mappings' => $mappings,
             'issues' => $issues,
-            'quarantine' => [],
+            'quarantine' => $quarantine,
             'assets' => $assets,
         ];
     }
@@ -344,6 +374,21 @@ final class LegacySliceAAnalyzer
             'original_value' => null,
             'applied_value' => null,
             'note' => $note,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $rawRow
+     * @return array{legacy_table: string, legacy_id: string, error_class: string, error_message: string, raw_row: array<string, mixed>}
+     */
+    private function quarantine(string $table, string $legacyId, string $errorClass, string $errorMessage, array $rawRow): array
+    {
+        return [
+            'legacy_table' => $table,
+            'legacy_id' => $legacyId,
+            'error_class' => $errorClass,
+            'error_message' => $errorMessage,
+            'raw_row' => $rawRow,
         ];
     }
 

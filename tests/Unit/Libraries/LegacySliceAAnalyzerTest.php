@@ -41,4 +41,20 @@ final class LegacySliceAAnalyzerTest extends TestCase
         $this->assertContains(LegacyMigrationCatalog::MAP_DUPLICATE, array_column($report['mappings'], 'status'));
         $this->assertNotEmpty(array_filter($report['issues'], static fn (array $issue): bool => $issue['issue_class'] === 'duplicate_video'));
     }
+
+    public function testUnknownGalleryRowsAreQuarantined(): void
+    {
+        $report = (new LegacySliceAAnalyzer())->analyze([
+            'sn_compania' => [],
+            'sn_obra' => [],
+            'sn_slider_cartelera' => [
+                ['id_slider' => '404', 'id_obra' => '999', 'url_sl' => '/images/missing.jpg', 'display' => '1'],
+            ],
+            'sn_youtube' => [],
+        ], '/tmp/fixture.sql', str_repeat('a', 64));
+
+        $this->assertSame(1, $report['summary']['quarantine']);
+        $this->assertSame(LegacyMigrationCatalog::MAP_QUARANTINED, $report['mappings'][0]['status']);
+        $this->assertSame('sn_slider_cartelera', $report['quarantine'][0]['legacy_table']);
+    }
 }
