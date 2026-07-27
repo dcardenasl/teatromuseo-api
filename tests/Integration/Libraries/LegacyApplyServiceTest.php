@@ -63,6 +63,56 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame(1, $client->postCount('/events/event-references'));
         $this->assertSame(102, (int) $repository->findMap('sn_youtube', '21', LegacyMigrationCatalog::TARGET_CMS, 'entry')['target_id']);
     }
+
+    public function testSliceBSecondPassReusesCourseTeacherAndSupplementalMapping(): void
+    {
+        $hash = hash('sha256', 'legacy-course-fixture');
+        $tables = [
+            'sn_escuela' => [
+                [
+                    'curso_id' => '25',
+                    'curso_titulo' => 'Taller Fixture',
+                    'curso_descripcion' => 'Descripción base',
+                    'curso_categoria' => '3',
+                    'curso_fecha_inicio' => '2026-09-01',
+                    'curso_fecha_termino' => '2026-10-01',
+                    'curso_hora_inicio' => '18:00',
+                    'curso_hora_termino' => '20:00',
+                ],
+            ],
+            'sn_cursos' => [
+                ['id' => '25', 'title' => 'Taller Fixture Actualizado', 'description_text' => 'Descripción suplementaria'],
+            ],
+            'sn_escuela_img' => [],
+            'sn_profesor' => [
+                ['profesor_id' => '8', 'profesor_nombre' => 'Docente Fixture', 'profesor_nacionalidad' => 'Chile', 'profesor_curso' => '25'],
+            ],
+            'sn_categoria_escuela' => [
+                ['id' => '3', 'titulo' => 'Formación'],
+            ],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+
+        $firstRun = $repository->createRun('legacy-course-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-fixture.sql', $hash);
+        $first = $service->apply('B', $tables, '/tmp/course-fixture.sql', $firstRun);
+        $repository->finishRun($firstRun, LegacyMigrationCatalog::RUN_COMPLETED, $first);
+
+        $secondRun = $repository->createRun('legacy-course-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-fixture.sql', $hash);
+        $second = $service->apply('B', $tables, '/tmp/course-fixture.sql', $secondRun);
+        $repository->finishRun($secondRun, LegacyMigrationCatalog::RUN_COMPLETED, $second);
+
+        $this->assertSame(2, $first['created']['cms_entries']);
+        $this->assertSame(0, $first['created']['events']);
+        $this->assertSame(0, $second['created']['cms_entries']);
+        $this->assertSame(2, $second['reused']['cms_entries']);
+        $this->assertSame(0, $client->postCount('/events/events'));
+        $this->assertSame(
+            LegacyMigrationCatalog::MAP_SUPPLEMENTAL,
+            $repository->findMap('sn_cursos', '25', LegacyMigrationCatalog::TARGET_CMS, 'entry')['status']
+        );
+    }
 }
 
 /**
@@ -92,6 +142,8 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 1, 'collection_key' => 'companias'],
                 ['id' => 2, 'collection_key' => 'obras'],
                 ['id' => 3, 'collection_key' => 'videos'],
+                ['id' => 4, 'collection_key' => 'personas'],
+                ['id' => 5, 'collection_key' => 'cursos'],
             ]]],
             '/cms/languages' => ['data' => ['items' => [['id' => 1, 'code' => 'es']]]],
             '/cms/block-types' => ['data' => ['items' => [

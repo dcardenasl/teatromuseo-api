@@ -952,7 +952,7 @@ final class LegacyApplyService
     {
         foreach ($teachers as $sourceId => $mappedTargetId) {
             if ((string) $mappedTargetId === $targetId) {
-                return $sourceId;
+                return (string) $sourceId;
             }
         }
         return null;
