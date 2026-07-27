@@ -81,7 +81,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     /** @param array<string, mixed> $query */
     public function get(string $path, array $query = []): array
     {
-        if (in_array($path, ['/cms/block-types', '/events/events'], true)) {
+        if (in_array($path, ['/cms/block-types', '/events/events', '/events/occurrences'], true)) {
             if ((int) ($query['per_page'] ?? 0) > 100) {
                 throw new \RuntimeException('Migration exceeded a public domain pagination contract.');
             }
