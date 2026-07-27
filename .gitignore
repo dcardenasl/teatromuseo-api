@@ -192,4 +192,6 @@ public/writable/tests/uploads/
 
 public/writable/uploads/
 
+public/writable/logs/
+
 tests/ci4_test.sqlite
