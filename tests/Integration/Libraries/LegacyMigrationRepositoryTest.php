@@ -89,4 +89,66 @@ final class LegacyMigrationRepositoryTest extends IntegrationTestCase
         $this->assertSame('completed', $run['status']);
         $this->assertNotNull($run['completed_at']);
     }
+
+    public function testDryRunCannotOverwriteMaterialMappingButApplyCanAdoptPreviewRow(): void
+    {
+        $hash = hash('sha256', 'mapping-protection');
+        $applyRun = $this->repository->createRun('cte70303_wp440', LegacyMigrationCatalog::MODE_APPLY, '/tmp/fixture.sql', $hash);
+        $materialMapId = $this->repository->upsertMap(
+            $applyRun,
+            'sn_obra',
+            'material-1',
+            LegacyMigrationCatalog::TARGET_CMS,
+            'entry',
+            '42',
+            $hash,
+            LegacyMigrationCatalog::MAP_MAPPED
+        );
+
+        $dryRun = $this->repository->createRun('cte70303_wp440', LegacyMigrationCatalog::MODE_DRY_RUN, '/tmp/fixture.sql', $hash);
+        $sameMaterialMapId = $this->repository->upsertMap(
+            $dryRun,
+            'sn_obra',
+            'material-1',
+            LegacyMigrationCatalog::TARGET_CMS,
+            'entry',
+            null,
+            $hash,
+            LegacyMigrationCatalog::MAP_PLANNED
+        );
+        $materialMap = $this->repository->findMap('sn_obra', 'material-1', LegacyMigrationCatalog::TARGET_CMS, 'entry');
+
+        $this->assertSame($materialMapId, $sameMaterialMapId);
+        $this->assertSame('42', $materialMap['target_id']);
+        $this->assertSame(LegacyMigrationCatalog::MAP_MAPPED, $materialMap['status']);
+        $this->assertSame($applyRun, (int) $materialMap['run_id']);
+
+        $plannedRun = $this->repository->createRun('cte70303_wp440', LegacyMigrationCatalog::MODE_DRY_RUN, '/tmp/fixture.sql', $hash);
+        $plannedMapId = $this->repository->upsertMap(
+            $plannedRun,
+            'sn_obra',
+            'planned-1',
+            LegacyMigrationCatalog::TARGET_CMS,
+            'entry',
+            null,
+            $hash,
+            LegacyMigrationCatalog::MAP_PLANNED
+        );
+        $secondApplyRun = $this->repository->createRun('cte70303_wp440', LegacyMigrationCatalog::MODE_APPLY, '/tmp/fixture.sql', $hash);
+        $adoptedMapId = $this->repository->upsertMap(
+            $secondApplyRun,
+            'sn_obra',
+            'planned-1',
+            LegacyMigrationCatalog::TARGET_CMS,
+            'entry',
+            '84',
+            $hash,
+            LegacyMigrationCatalog::MAP_MAPPED
+        );
+        $adoptedMap = $this->repository->findMap('sn_obra', 'planned-1', LegacyMigrationCatalog::TARGET_CMS, 'entry');
+
+        $this->assertSame($plannedMapId, $adoptedMapId);
+        $this->assertSame('84', $adoptedMap['target_id']);
+        $this->assertSame($secondApplyRun, (int) $adoptedMap['run_id']);
+    }
 }

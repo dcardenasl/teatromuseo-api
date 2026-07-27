@@ -85,6 +85,19 @@ final class LegacyMigrationRepository
         }
         $existing = $result->getRowArray();
 
+        // A preview must never erase a mapping produced by a material apply.
+        // The unique source/target key intentionally lets a later apply adopt
+        // a planned preview row, but the reverse direction must be read-only
+        // for the material mapping so a dry-run cannot make a completed target
+        // look pending again.
+        if (
+            $existing !== null
+            && $this->runMode($runId) === LegacyMigrationCatalog::MODE_DRY_RUN
+            && $this->runMode((int) $existing['run_id']) === LegacyMigrationCatalog::MODE_APPLY
+        ) {
+            return (int) $existing['id'];
+        }
+
         $payload = [
             'run_id'       => $runId,
             'legacy_table' => $legacyTable,
@@ -263,6 +276,20 @@ final class LegacyMigrationRepository
         if (trim($targetSystem) === '' || trim($targetType) === '') {
             throw new \InvalidArgumentException('Target system and type are required for migration mapping.');
         }
+    }
+
+    private function runMode(int $runId): ?string
+    {
+        $result = $this->db->table('legacy_migration_runs')
+            ->select('mode')
+            ->where('id', $runId)
+            ->get();
+        if ($result === false) {
+            throw new \RuntimeException('Unable to query legacy migration run mode.');
+        }
+        $row = $result->getRowArray();
+
+        return $row === null ? null : (string) $row['mode'];
     }
 
     private function stringify(mixed $value): ?string
