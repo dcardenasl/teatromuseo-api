@@ -14,7 +14,7 @@ use CodeIgniter\CLI\CLI;
 use Config\Database;
 
 /**
- * Builds a compact, write-free migration report for a legacy slice.
+ * Builds a compact migration report without writing domain content.
  */
 final class LegacyDryRun extends BaseCommand
 {
