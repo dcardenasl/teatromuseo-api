@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LegacyMigration` library + `legacy:dry-run` command** — dry-run engine for the legacy data
   migration (SQL dump reader, asset resolver, slice A analyzer, migration control tables). No
   destructive writes yet.
+- **`legacy:dry-run` / `legacy:apply` slice C support** — `LegacySliceCAnalyzer` analyzes
+  Museum/Press/Foundation legacy tables (`sn_expo`, `sn_noticias`, `sn_editorial`, `sn_prensa`,
+  `sn_administracion`, `sn_upa`, `sn_funcionarios`, `sn_museo`), and both commands now accept
+  `--slice C`.
 
 ### Fixed
 
