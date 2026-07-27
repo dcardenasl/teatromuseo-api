@@ -45,6 +45,7 @@ final class LegacyApplyService
     public function apply(string $slice, array $tables, string $sourcePath, int $runId): array
     {
         $this->currentRunId = $runId;
+        $this->cmsBlockInstances = null;
         $this->summary = [
             'slice' => $slice,
             'mode' => LegacyMigrationCatalog::MODE_APPLY,
@@ -460,6 +461,10 @@ final class LegacyApplyService
         $mapped = $this->repository->findMap('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence');
         if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
             $this->summary['reused']['occurrences']++;
+            return;
+        }
+        if ($mapped !== null && ($mapped['status'] ?? null) === LegacyMigrationCatalog::MAP_QUARANTINED && (string) ($mapped['source_hash'] ?? '') === $this->sourceHash) {
+            $this->summary['issues']++;
             return;
         }
         $start = $this->dateTime($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null);
