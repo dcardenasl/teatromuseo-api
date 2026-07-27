@@ -49,9 +49,16 @@ final class LegacyApply extends BaseCommand
         }
 
         $tokenFile = trim((string) ($this->optionValue('admin-token-file') ?: ''));
-        $token = $tokenFile !== ''
-            ? trim((string) @file_get_contents($tokenFile))
-            : trim((string) ($this->optionValue('admin-token') ?: getenv('LEGACY_ADMIN_TOKEN') ?: ''));
+        if ($tokenFile !== '') {
+            if (! is_readable($tokenFile)) {
+                CLI::error("Apply blocked: token file is not readable: {$tokenFile}");
+                return;
+            }
+            $tokenContents = file_get_contents($tokenFile);
+            $token = $tokenContents === false ? '' : trim($tokenContents);
+        } else {
+            $token = trim((string) ($this->optionValue('admin-token') ?: getenv('LEGACY_ADMIN_TOKEN') ?: ''));
+        }
         if ($token === '') {
             CLI::error('Apply blocked: provide --admin-token or LEGACY_ADMIN_TOKEN.');
             return;

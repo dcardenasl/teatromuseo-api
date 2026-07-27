@@ -176,7 +176,7 @@ final class LegacyApplyService
             if ($videoId === '') {
                 continue;
             }
-            $this->applyCmsEntry(
+            $videoEntryId = $this->applyCmsEntry(
                 'sn_youtube',
                 $videoId,
                 'videos',
@@ -189,7 +189,7 @@ final class LegacyApplyService
             foreach (array_slice($group, 1) as $duplicate) {
                 $duplicateId = $this->stringValue($duplicate['id_youtube'] ?? '');
                 if ($duplicateId !== '') {
-                    $this->map($runId, 'sn_youtube', $duplicateId, LegacyMigrationCatalog::TARGET_CMS, 'entry', $videoId, LegacyMigrationCatalog::MAP_DUPLICATE, 'canonical video ' . $videoId);
+                    $this->map($runId, 'sn_youtube', $duplicateId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $videoEntryId, LegacyMigrationCatalog::MAP_DUPLICATE, 'canonical video ' . $videoId);
                 }
             }
         }
@@ -391,7 +391,8 @@ final class LegacyApplyService
         $mapped = $this->repository->findMap('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event');
         if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
             $eventId = (int) $mapped['target_id'];
-            $this->ensureEventReference($eventId, $entryId, $legacyId);
+            $this->summary['reused']['events']++;
+            $this->ensureEventReference($eventId, $entryId, $legacyId, $this->currentRunId);
             return $eventId;
         }
 
@@ -400,6 +401,7 @@ final class LegacyApplyService
         if ($existing !== null) {
             $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', (string) $existing, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic UUID lookup');
             $this->summary['reused']['events']++;
+            $this->ensureEventReference($existing, $entryId, $legacyId, $runId);
             return $existing;
         }
 
@@ -422,16 +424,22 @@ final class LegacyApplyService
         ]);
         $id = $this->extractId($response);
         $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', (string) $id, LegacyMigrationCatalog::MAP_MAPPED, 'created through event-domain API');
-        $this->ensureEventReference($id, $entryId, $legacyId);
+        $this->ensureEventReference($id, $entryId, $legacyId, $runId);
         $this->summary['created']['events']++;
-        $this->summary['created']['references']++;
 
         return $id;
     }
 
-    private function ensureEventReference(int $eventId, int $entryId, string $legacyId): void
+    private function ensureEventReference(int $eventId, int $entryId, string $legacyId, int $runId): void
     {
-        $this->event->post('/events/event-references', [
+        $referenceKey = $legacyId . ':reference:' . $entryId;
+        $mapped = $this->repository->findMap('sn_obra', $referenceKey, LegacyMigrationCatalog::TARGET_EVENT, 'event_reference');
+        if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
+            $this->summary['reused']['references']++;
+            return;
+        }
+
+        $response = $this->event->post('/events/event-references', [
             'event_id' => $eventId,
             'source_system' => LegacyMigrationCatalog::TARGET_CMS,
             'source_type' => 'entry',
@@ -439,6 +447,9 @@ final class LegacyApplyService
             'relation' => 'editorial_work',
             'metadata' => ['legacy_table' => 'sn_obra', 'legacy_id' => $legacyId],
         ]);
+        $referenceId = $this->extractId($response);
+        $this->map($runId, 'sn_obra', $referenceKey, LegacyMigrationCatalog::TARGET_EVENT, 'event_reference', (string) $referenceId, LegacyMigrationCatalog::MAP_MAPPED, 'idempotent CMS/Event reference');
+        $this->summary['created']['references']++;
     }
 
     /** @param array<string, mixed> $work */
@@ -592,7 +603,7 @@ final class LegacyApplyService
     {
         $this->collections = $this->indexByKey($this->list($this->cms->get('/cms/collections', ['per_page' => 500])), ['collection_key', 'key', 'slug']);
         $this->languages = $this->indexLanguages($this->list($this->cms->get('/cms/languages', ['per_page' => 100])));
-        $this->blockTypes = $this->indexByKey($this->list($this->cms->get('/cms/block-types', ['per_page' => 500])), ['block_key', 'key', 'slug']);
+        $this->blockTypes = $this->indexByKey($this->list($this->cms->get('/cms/block-types', ['per_page' => 100])), ['block_key', 'key', 'slug']);
         if (! isset($this->languages['es']) && $this->languages !== []) {
             $this->languages['es'] = (int) reset($this->languages);
         }
@@ -682,7 +693,7 @@ final class LegacyApplyService
 
     private function findEvent(string $uuid): ?int
     {
-        foreach ($this->list($this->event->get('/events/events', ['per_page' => 500])) as $item) {
+        foreach ($this->list($this->event->get('/events/events', ['per_page' => 100])) as $item) {
             if ($this->stringValue($item['uuid'] ?? '') === $uuid) {
                 return $this->positiveId($item['id'] ?? null);
             }
