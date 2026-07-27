@@ -101,6 +101,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
             ]]],
             '/cms/entries' => ['data' => ['items' => []]],
             '/events/events' => ['data' => ['items' => []]],
+            '/events/occurrences' => ['data' => ['items' => []]],
             default => throw new \RuntimeException("Unexpected migration GET {$path}"),
         };
     }

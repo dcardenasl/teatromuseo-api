@@ -25,6 +25,8 @@ final class LegacyApplyService
     /** @var array<string, mixed> */
     private array $summary = [];
     private int $currentRunId = 0;
+    /** @var list<array<string, mixed>>|null */
+    private ?array $cmsBlockInstances = null;
 
     public function __construct(
         private readonly LegacyMigrationRepository $repository,
@@ -467,11 +469,18 @@ final class LegacyApplyService
             $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', null, LegacyMigrationCatalog::MAP_QUARANTINED, 'invalid legacy date');
             return;
         }
+        $end = $this->plusHours($start, 2) ?? $start;
+        $existing = $this->findOccurrence($eventId, $start, $end);
+        if ($existing !== null) {
+            $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', (string) $existing, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic event/time lookup');
+            $this->summary['reused']['occurrences']++;
+            return;
+        }
         $response = $this->event->post('/events/occurrences', [
             'event_id' => $eventId,
             'venue_id' => null,
             'start_time' => $start,
-            'end_time' => $this->plusHours($start, 2) ?? $start,
+            'end_time' => $end,
             'status' => 'scheduled',
             'capacity' => 0,
             'available_spots' => 0,
@@ -490,8 +499,14 @@ final class LegacyApplyService
         $parentMap = $this->repository->findMap($legacyTable, $legacyId . ':gallery', LegacyMigrationCatalog::TARGET_CMS, 'gallery');
         $parentId = $this->positiveId($parentMap['target_id'] ?? null);
         if ($parentId === null) {
-            $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
-                'block_id' => $this->blockTypes['gallery'] ?? throw new \RuntimeException('CMS block type gallery is not configured.'),
+            $galleryBlockId = $this->blockTypes['gallery'] ?? throw new \RuntimeException('CMS block type gallery is not configured.');
+            $parentId = $this->findCmsBlock($entryId, $galleryBlockId, null, 100, null);
+            if ($parentId !== null) {
+                $this->map($runId, $legacyTable, $legacyId . ':gallery', LegacyMigrationCatalog::TARGET_CMS, 'gallery', (string) $parentId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic gallery lookup');
+                $this->summary['reused']['blocks']++;
+            } else {
+                $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
+                'block_id' => $galleryBlockId,
                 'owner_type' => 'entry',
                 'owner_id' => $entryId,
                 'parent_instance_id' => null,
@@ -500,10 +515,12 @@ final class LegacyApplyService
                 'is_active' => true,
                 'block_config' => ['presentation_mode' => 'modal_preview', 'columns' => '3', 'gap' => 'medium'],
                 'translations' => [],
-            ]);
-            $parentId = $this->extractId($response);
-            $this->map($runId, $legacyTable, $legacyId . ':gallery', LegacyMigrationCatalog::TARGET_CMS, 'gallery', (string) $parentId, LegacyMigrationCatalog::MAP_MAPPED, 'gallery container');
-            $this->summary['created']['blocks']++;
+                ]);
+                $parentId = $this->extractId($response);
+                $this->rememberCmsBlock($parentId, $galleryBlockId, $entryId, null, 100, null);
+                $this->map($runId, $legacyTable, $legacyId . ':gallery', LegacyMigrationCatalog::TARGET_CMS, 'gallery', (string) $parentId, LegacyMigrationCatalog::MAP_MAPPED, 'gallery container');
+                $this->summary['created']['blocks']++;
+            }
         } else {
             $this->summary['reused']['blocks']++;
         }
@@ -522,12 +539,20 @@ final class LegacyApplyService
             if ($fileId === null) {
                 continue;
             }
+            $galleryItemBlockId = $this->blockTypes['gallery_item'] ?? throw new \RuntimeException('CMS block type gallery_item is not configured.');
+            $sortOrder = (int) ($image['escuela_img_posicion'] ?? $image['id_slider'] ?? $imageId);
+            $recoveredBlockId = $this->findCmsBlock($entryId, $galleryItemBlockId, $parentId, $sortOrder, $fileId);
+            if ($recoveredBlockId !== null) {
+                $this->map($runId, $this->imageTable($legacyTable), $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic gallery item lookup');
+                $this->summary['reused']['blocks']++;
+                continue;
+            }
             $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
-                'block_id' => $this->blockTypes['gallery_item'] ?? throw new \RuntimeException('CMS block type gallery_item is not configured.'),
+                'block_id' => $galleryItemBlockId,
                 'owner_type' => 'entry',
                 'owner_id' => $entryId,
                 'parent_instance_id' => $parentId,
-                'sort_order' => (int) ($image['escuela_img_posicion'] ?? $image['id_slider'] ?? $imageId),
+                'sort_order' => $sortOrder,
                 'column_index' => null,
                 'is_active' => true,
                 'block_config' => ['image' => ['source_kind' => 'file', 'file_id' => $fileId]],
@@ -538,6 +563,7 @@ final class LegacyApplyService
                 ]],
             ]);
             $blockId = $this->extractId($response);
+            $this->rememberCmsBlock($blockId, $galleryItemBlockId, $entryId, $parentId, $sortOrder, $fileId);
             $this->map($runId, $this->imageTable($legacyTable), $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'gallery item block');
             $this->summary['created']['blocks']++;
         }
@@ -550,8 +576,15 @@ final class LegacyApplyService
             $this->summary['reused']['blocks']++;
             return;
         }
+        $documentBlockId = $this->blockTypes['document_download'] ?? throw new \RuntimeException('CMS block type document_download is not configured.');
+        $recoveredBlockId = $this->findCmsBlock($entryId, $documentBlockId, null, 200, $fileId);
+        if ($recoveredBlockId !== null) {
+            $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'document_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic document block lookup');
+            $this->summary['reused']['blocks']++;
+            return;
+        }
         $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
-            'block_id' => $this->blockTypes['document_download'] ?? throw new \RuntimeException('CMS block type document_download is not configured.'),
+            'block_id' => $documentBlockId,
             'owner_type' => 'entry',
             'owner_id' => $entryId,
             'parent_instance_id' => null,
@@ -566,6 +599,7 @@ final class LegacyApplyService
             ]],
         ]);
         $blockId = $this->extractId($response);
+        $this->rememberCmsBlock($blockId, $documentBlockId, $entryId, null, 200, $fileId);
         $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'document_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'document download block');
         $this->summary['created']['blocks']++;
     }
@@ -611,7 +645,7 @@ final class LegacyApplyService
 
     /**
      * @param array<string, mixed> $response
-     * @return array<int, array<string, mixed>>
+     * @return list<array<string, mixed>>
      */
     private function list(array $response): array
     {
@@ -699,6 +733,81 @@ final class LegacyApplyService
             }
         }
         return null;
+    }
+
+    private function findOccurrence(int $eventId, string $start, string $end): ?int
+    {
+        foreach ($this->list($this->event->get('/events/occurrences', ['per_page' => 100])) as $item) {
+            if ((int) ($item['event_id'] ?? 0) !== $eventId) {
+                continue;
+            }
+            if ($this->stringValue($item['start_time'] ?? '') !== $start || $this->stringValue($item['end_time'] ?? '') !== $end) {
+                continue;
+            }
+            $id = $this->positiveId($item['id'] ?? null);
+            if ($id !== null) {
+                return $id;
+            }
+        }
+
+        return null;
+    }
+
+    private function findCmsBlock(int $entryId, int $blockId, ?int $parentId, int $sortOrder, ?int $fileId): ?int
+    {
+        if ($this->cmsBlockInstances === null) {
+            $this->cmsBlockInstances = $this->list($this->cms->get('/cms/block-instances', ['per_page' => 10000]));
+        }
+
+        foreach ($this->cmsBlockInstances as $item) {
+            if ((int) ($item['block_id'] ?? 0) !== $blockId || (string) ($item['owner_type'] ?? '') !== 'entry' || (int) ($item['owner_id'] ?? 0) !== $entryId || (int) ($item['sort_order'] ?? 0) !== $sortOrder) {
+                continue;
+            }
+            $candidateParentId = $this->positiveId($item['parent_instance_id'] ?? null);
+            if ($candidateParentId !== $parentId) {
+                continue;
+            }
+            if ($fileId !== null) {
+                $config = $item['block_config'] ?? [];
+                if (is_string($config)) {
+                    $decoded = json_decode($config, true);
+                    $config = is_array($decoded) ? $decoded : [];
+                }
+                if (! is_array($config)) {
+                    continue;
+                }
+                $candidateFileId = $config['image']['file_id'] ?? $config['document']['file_id'] ?? null;
+                if ((int) $candidateFileId !== $fileId) {
+                    continue;
+                }
+            }
+            $id = $this->positiveId($item['id'] ?? null);
+            if ($id !== null) {
+                return $id;
+            }
+        }
+
+        return null;
+    }
+
+    private function rememberCmsBlock(int $instanceId, int $blockId, int $entryId, ?int $parentId, int $sortOrder, ?int $fileId): void
+    {
+        if ($this->cmsBlockInstances === null) {
+            return;
+        }
+        $config = [];
+        if ($fileId !== null) {
+            $config = ['image' => ['file_id' => $fileId]];
+        }
+        $this->cmsBlockInstances[] = [
+            'id' => $instanceId,
+            'block_id' => $blockId,
+            'owner_type' => 'entry',
+            'owner_id' => $entryId,
+            'parent_instance_id' => $parentId,
+            'sort_order' => $sortOrder,
+            'block_config' => $config,
+        ];
     }
 
     private function map(int $runId, string $legacyTable, string $legacyId, string $targetSystem, string $targetType, ?string $targetId, string $status, string $note): void
