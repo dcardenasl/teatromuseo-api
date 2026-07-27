@@ -60,6 +60,9 @@ final class LegacySliceAAnalyzer
             if (! $this->hasRow($tables['sn_compania'] ?? [], 'id_compania', $work['id_compania'] ?? null)) {
                 $issues[] = $this->issue('sn_obra', $legacyId, 'fk_missing', 'id_compania', 'Referenced company is not present in the selected source rows.', 'warning');
             }
+            if (array_key_exists('sn_publico', $tables) && ! $this->hasRow($tables['sn_publico'], 'id_publico', $work['id_publico'] ?? null)) {
+                $issues[] = $this->issue('sn_obra', $legacyId, 'fk_missing', 'id_publico', 'Referenced audience is not present in the selected source rows.', 'warning');
+            }
 
             $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'obras:' . $workKey, $sourceHash);
             $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', 'function:' . $workKey, $sourceHash);
@@ -232,6 +235,7 @@ final class LegacySliceAAnalyzer
                     'sn_obra' => count($tables['sn_obra'] ?? []),
                     'sn_slider_cartelera' => count($tables['sn_slider_cartelera'] ?? []),
                     'sn_youtube' => count($tables['sn_youtube'] ?? []),
+                    'sn_publico' => count($tables['sn_publico'] ?? []),
                 ],
                 'slice_rows_selected' => [
                     'companies' => count($companyById),
@@ -239,6 +243,7 @@ final class LegacySliceAAnalyzer
                     'canonical_works' => count($workGroups),
                     'gallery_items' => $galleryCount,
                     'videos' => count($videoGroups),
+                    'audiences' => count($tables['sn_publico'] ?? []),
                 ],
                 'targets_planned' => [
                     'cms_entries' => count($companyById) + count($workGroups) + count($videoGroups),

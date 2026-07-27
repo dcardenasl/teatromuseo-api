@@ -109,7 +109,7 @@ final class LegacyDryRun extends BaseCommand
     {
         return $slice === 'B'
             ? ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela']
-            : ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube'];
+            : ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube', 'sn_publico'];
     }
 
     /**

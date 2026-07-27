@@ -72,6 +72,15 @@ final class LegacyApplyService
         usort($workRows, fn (array $left, array $right): int => $this->numericId($left, 'id_obra') <=> $this->numericId($right, 'id_obra'));
         $workRows = array_slice($workRows, 0, 10);
 
+        $audiences = [];
+        foreach ($tables['sn_publico'] ?? [] as $audience) {
+            $audienceId = $this->stringValue($audience['id_publico'] ?? '');
+            $audienceName = $this->stringValue($audience['nombre_publico'] ?? '');
+            if ($audienceId !== '' && $audienceName !== '') {
+                $audiences[$audienceId] = $audienceName;
+            }
+        }
+
         $companyRows = $this->visibleRows($tables['sn_compania'] ?? [], 'display_comp');
         $referencedCompanyIds = [];
         foreach ($workRows as $work) {
@@ -130,6 +139,12 @@ final class LegacyApplyService
                     'subtitle' => $this->stringValue($canonical['descripcion_corta_obra'] ?? ''),
                     'synopsis' => $this->stringValue($canonical['descripcion_larga_obra'] ?? ''),
                     'premiere_date' => $this->validDate($canonical['fecha_obra'] ?? null) ? $this->stringValue($canonical['fecha_obra']) : null,
+                    'performance_date' => $this->validDate($canonical['fecha_obra'] ?? null) ? $this->stringValue($canonical['fecha_obra']) : null,
+                    'performance_time' => $this->stringValue($canonical['hora_obra'] ?? ''),
+                    'venue' => $this->stringValue($canonical['direccion_obra'] ?? ''),
+                    'price_regular' => $this->stringValue($canonical['valor1_obra'] ?? ''),
+                    'price_discount' => $this->stringValue($canonical['valor2_obra'] ?? ''),
+                    'audience' => $audiences[$this->stringValue($canonical['id_publico'] ?? '')] ?? '',
                     'company' => isset($companyTargets[$companyId]) ? ['entry_id' => $companyTargets[$companyId], 'collection_key' => 'companias'] : null,
                 ],
                 $runId,
@@ -186,7 +201,12 @@ final class LegacyApplyService
                 $this->slug($videoKey),
                 $this->stringValue($video['nombre'] ?? 'Video de YouTube'),
                 $this->stringValue($video['nombre'] ?? ''),
-                ['provider' => 'youtube', 'video_id' => $this->youtubeId($videoKey), 'video_url' => $this->youtubeUrl($videoKey)],
+                [
+                    'provider' => 'youtube',
+                    'video_id' => $this->youtubeId($videoKey),
+                    'video_url' => $this->youtubeUrl($videoKey),
+                    'recorded_at' => $this->validDate($video['fecha'] ?? null) ? $this->stringValue($video['fecha']) : null,
+                ],
                 $runId
             );
             foreach (array_slice($group, 1) as $duplicate) {

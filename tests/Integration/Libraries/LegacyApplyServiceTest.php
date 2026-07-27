@@ -29,14 +29,21 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
                     'url' => 'obra-fixture',
                     'fecha_obra' => '2026-08-01',
                     'hora_obra' => '20:00',
+                    'valor1_obra' => '$ 3.000',
+                    'valor2_obra' => '$ 2.500',
+                    'direccion_obra' => 'Teatromuseo',
+                    'id_publico' => '1',
                     'id_compania' => '7',
                     'display' => '1',
                 ],
             ],
             'sn_slider_cartelera' => [],
             'sn_youtube' => [
-                ['id_youtube' => '20', 'url' => 'fixture-video', 'nombre' => 'Video Fixture', 'display' => '1'],
-                ['id_youtube' => '21', 'url' => 'fixture-video', 'nombre' => 'Video Fixture duplicado', 'display' => '1'],
+                ['id_youtube' => '20', 'url' => 'fixture-video', 'nombre' => 'Video Fixture', 'fecha' => '2026-08-02', 'display' => '1'],
+                ['id_youtube' => '21', 'url' => 'fixture-video', 'nombre' => 'Video Fixture duplicado', 'fecha' => '2026-08-02', 'display' => '1'],
+            ],
+            'sn_publico' => [
+                ['id_publico' => '1', 'nombre_publico' => 'Familiar'],
             ],
         ];
         $client = new LegacyApplyRecordingClient();
@@ -62,6 +69,10 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame(1, $second['reused']['references']);
         $this->assertSame(1, $client->postCount('/events/event-references'));
         $this->assertSame(102, (int) $repository->findMap('sn_youtube', '21', LegacyMigrationCatalog::TARGET_CMS, 'entry')['target_id']);
+        $entries = $client->payloads('/cms/entries');
+        $this->assertSame('Familiar', $entries[1]['wizard_extra']['audience']);
+        $this->assertSame('$ 3.000', $entries[1]['wizard_extra']['price_regular']);
+        $this->assertSame('2026-08-02', $entries[2]['wizard_extra']['recorded_at']);
     }
 
     public function testSliceBSecondPassReusesCourseTeacherAndSupplementalMapping(): void
@@ -123,6 +134,8 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
 {
     /** @var array<string, int> */
     private array $posts = [];
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $payloads = [];
     private int $nextCmsId = 100;
     private int $nextEventId = 200;
     private int $nextOccurrenceId = 300;
@@ -162,6 +175,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     public function post(string $path, array $payload = []): array
     {
         $this->posts[$path] = ($this->posts[$path] ?? 0) + 1;
+        $this->payloads[$path][] = $payload;
 
         return match ($path) {
             '/cms/entries' => ['data' => ['id' => $this->nextCmsId++]],
@@ -181,5 +195,11 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     public function postCount(string $path): int
     {
         return $this->posts[$path] ?? 0;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function payloads(string $path): array
+    {
+        return $this->payloads[$path] ?? [];
     }
 }

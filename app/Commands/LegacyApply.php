@@ -76,7 +76,7 @@ final class LegacyApply extends BaseCommand
             $sourceHash = $reader->sourceHash();
             $tables = $reader->rowsForTables($slice === 'B'
                 ? ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela']
-                : ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube']);
+                : ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube', 'sn_publico']);
             $repository = new LegacyMigrationRepository(Database::connect());
             $runId = $repository->createRun(pathinfo($dumpPath, PATHINFO_FILENAME), LegacyMigrationCatalog::MODE_APPLY, $dumpPath, $sourceHash);
             $resolver = is_string($assetRoot) && trim($assetRoot) !== '' ? new LegacyAssetResolver($assetRoot) : null;
