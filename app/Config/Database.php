@@ -31,7 +31,7 @@ class Database extends Config
         'hostname'    => 'localhost',
         'username'    => 'root',
         'password'    => 'root',
-        'database'    => 'ci4_website_builder_api',
+        'database'    => 'teatromuseo_api',
         'DBDriver'    => 'MySQLi',
         'DBPrefix'    => '',
         'pConnect'    => false,
