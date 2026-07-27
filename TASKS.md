@@ -13,6 +13,16 @@
 
 *(vacío)*
 
+## ✅ Completadas
+
+- **LEGACY-001 — Motor de migración de datos legacy (dry-run):** `app/Commands/LegacyDryRun.php`,
+  `app/Libraries/LegacyMigration/` (lector de dumps SQL, resolutor de assets con guardas
+  anti path-traversal, catálogo y analizador de slice A) + tablas de control
+  (`2026-07-27-024000_CreateLegacyMigrationControlTables.php`) y su suite de tests unit/integration.
+  Opera únicamente en modo `dry_run`; no ejecuta escrituras destructivas contra la BD legacy.
+  Pendiente como próximo paso: habilitar el modo de escritura real detrás de un flag explícito
+  cuando se decida ejecutar la migración productiva.
+
 ## ⚪ Backlog
 
 - [ ] **API-012 — Docker out-of-the-box:** validar la orquestación cross-repo en `ci4-kickstart`
