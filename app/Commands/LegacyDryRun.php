@@ -30,18 +30,18 @@ final class LegacyDryRun extends BaseCommand
         '--format' => 'Report format. Currently supported: json.',
     ];
 
-    public function run(array $params): void
+    public function run(array $params): int
     {
         $slice = strtoupper((string) ($this->optionValue('slice') ?: 'A'));
         if (! in_array($slice, ['A', 'B'], true)) {
             CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B.");
 
-            return;
+            return EXIT_ERROR;
         }
         if (strtolower((string) ($this->optionValue('format') ?: 'json')) !== 'json') {
             CLI::error('Only --format=json is currently supported.');
 
-            return;
+            return EXIT_ERROR;
         }
 
         $dumpPath = (string) ($this->optionValue('dump') ?: $this->defaultDumpPath());
@@ -84,6 +84,7 @@ final class LegacyDryRun extends BaseCommand
                 (int) ($summary['slice_rows_selected']['videos'] ?? 0),
                 (int) ($summary['issues'] ?? 0)
             ));
+            return EXIT_SUCCESS;
         } catch (\Throwable $exception) {
             if ($runId !== null) {
                 try {
@@ -99,6 +100,7 @@ final class LegacyDryRun extends BaseCommand
             }
 
             CLI::error("Legacy Slice {$slice} dry-run failed: " . $exception->getMessage());
+            return EXIT_ERROR;
         }
     }
 

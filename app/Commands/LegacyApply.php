@@ -36,23 +36,23 @@ final class LegacyApply extends BaseCommand
         '--hub-url' => 'Hub API base URL. Defaults to http://localhost:8180/api/v1.',
     ];
 
-    public function run(array $params): void
+    public function run(array $params): int
     {
         $slice = strtoupper((string) ($this->optionValue('slice') ?: 'A'));
         if (! in_array($slice, ['A', 'B'], true)) {
             CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B.");
-            return;
+            return EXIT_ERROR;
         }
         if ($this->optionValue('confirm') === null) {
             CLI::error('Apply blocked: add --confirm explicitly to authorize domain writes.');
-            return;
+            return EXIT_ERROR;
         }
 
         $tokenFile = trim((string) ($this->optionValue('admin-token-file') ?: ''));
         if ($tokenFile !== '') {
             if (! is_readable($tokenFile)) {
                 CLI::error("Apply blocked: token file is not readable: {$tokenFile}");
-                return;
+                return EXIT_ERROR;
             }
             $tokenContents = file_get_contents($tokenFile);
             $token = $tokenContents === false ? '' : trim($tokenContents);
@@ -61,7 +61,7 @@ final class LegacyApply extends BaseCommand
         }
         if ($token === '') {
             CLI::error('Apply blocked: provide --admin-token or LEGACY_ADMIN_TOKEN.');
-            return;
+            return EXIT_ERROR;
         }
 
         $dumpPath = (string) ($this->optionValue('dump') ?: dirname(APPPATH, 3) . '/docs/cte70303_wp440.sql');
@@ -95,6 +95,7 @@ final class LegacyApply extends BaseCommand
             CLI::write("Legacy Slice {$slice} apply completed.", 'green');
             CLI::write('run_id=' . $runId, 'cyan');
             CLI::write(json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            return EXIT_SUCCESS;
         } catch (\Throwable $exception) {
             if ($runId !== null) {
                 try {
@@ -104,6 +105,7 @@ final class LegacyApply extends BaseCommand
                 }
             }
             CLI::error("Legacy Slice {$slice} apply failed: " . $exception->getMessage());
+            return EXIT_ERROR;
         }
     }
 
