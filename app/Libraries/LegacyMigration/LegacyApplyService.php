@@ -25,8 +25,10 @@ final class LegacyApplyService
     /** @var array<string, mixed> */
     private array $summary = [];
     private int $currentRunId = 0;
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $cmsBlockInstances = [];
     /** @var list<array<string, mixed>>|null */
-    private ?array $cmsBlockInstances = null;
+    private ?array $cmsEntries = null;
 
     public function __construct(
         private readonly LegacyMigrationRepository $repository,
@@ -45,7 +47,8 @@ final class LegacyApplyService
     public function apply(string $slice, array $tables, string $sourcePath, int $runId): array
     {
         $this->currentRunId = $runId;
-        $this->cmsBlockInstances = null;
+        $this->cmsBlockInstances = [];
+        $this->cmsEntries = null;
         $this->summary = [
             'slice' => $slice,
             'mode' => LegacyMigrationCatalog::MODE_APPLY,
@@ -380,15 +383,37 @@ final class LegacyApplyService
             return $existing;
         }
 
-        $translation = [
-            'language_id' => $this->spanishLanguageId(),
-            'slug' => $slug,
-            'title' => $title !== '' ? $title : ucfirst(str_replace('-', ' ', $slug)),
-            'excerpt' => $excerpt,
-        ];
-        if ($featuredFileId !== null) {
-            $translation['featured_image'] = ['source_kind' => 'file', 'file_id' => $featuredFileId];
+        $globalExisting = $this->findCmsEntry(null, $slug);
+        if ($globalExisting !== null) {
+            $slug = $slug . '-' . $collectionKey;
+            $existingNew = $this->findCmsEntry($collectionId, $slug);
+            if ($existingNew !== null) {
+                $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $existingNew, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic collection/slug lookup after resolution');
+                $this->summary['reused']['cms_entries']++;
+                return $existingNew;
+            }
         }
+
+        $translations = [];
+        $cachedTranslations = [];
+        foreach ($this->languages as $code => $langId) {
+            $trans = [
+                'language_id' => $langId,
+                'slug' => $slug,
+                'title' => $title !== '' ? $title : ucfirst(str_replace('-', ' ', $slug)),
+                'excerpt' => mb_strimwidth(trim($excerpt), 0, 497, '...'),
+            ];
+            if ($featuredFileId !== null) {
+                $trans['featured_image'] = ['source_kind' => 'file', 'file_id' => $featuredFileId];
+            }
+            $translations[] = $trans;
+            $cachedTranslations[] = [
+                'language_id' => $langId,
+                'slug' => $slug,
+                'title' => $title,
+            ];
+        }
+
         $response = $this->cms->post('/cms/entries', [
             'collection_id' => $collectionId,
             'author_id' => null,
@@ -399,10 +424,18 @@ final class LegacyApplyService
             'view_count' => 0,
             'sort_order' => 0,
             'is_in_sitemap' => true,
-            'translations' => [$translation],
+            'translations' => $translations,
             'wizard_extra' => $wizardExtra,
         ]);
         $id = $this->extractId($response);
+        if ($this->cmsEntries !== null) {
+            $this->cmsEntries[] = [
+                'id' => $id,
+                'collection_id' => $collectionId,
+                'slug' => $slug,
+                'translations' => $cachedTranslations,
+            ];
+        }
         $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $id, LegacyMigrationCatalog::MAP_MAPPED, 'created through cms-domain API');
         $this->summary['created']['cms_entries']++;
 
@@ -574,6 +607,14 @@ final class LegacyApplyService
                 $this->summary['reused']['blocks']++;
                 continue;
             }
+            $translations = [];
+            foreach ($this->languages as $code => $langId) {
+                $translations[] = [
+                    'language_id' => $langId,
+                    'block_data' => ['alt' => $this->stringValue($image[$altField] ?? ''), 'caption' => $this->stringValue($image[$altField] ?? '')],
+                    'is_published' => true,
+                ];
+            }
             $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
                 'block_id' => $galleryItemBlockId,
                 'owner_type' => 'entry',
@@ -583,11 +624,7 @@ final class LegacyApplyService
                 'column_index' => null,
                 'is_active' => true,
                 'block_config' => ['image' => ['source_kind' => 'file', 'file_id' => $fileId]],
-                'translations' => [[
-                    'language_id' => $this->spanishLanguageId(),
-                    'block_data' => ['alt' => $this->stringValue($image[$altField] ?? ''), 'caption' => $this->stringValue($image[$altField] ?? '')],
-                    'is_published' => true,
-                ]],
+                'translations' => $translations,
             ]);
             $blockId = $this->extractId($response);
             $this->rememberCmsBlock($blockId, $galleryItemBlockId, $entryId, $parentId, $sortOrder, $fileId);
@@ -610,6 +647,14 @@ final class LegacyApplyService
             $this->summary['reused']['blocks']++;
             return;
         }
+        $translations = [];
+        foreach ($this->languages as $code => $langId) {
+            $translations[] = [
+                'language_id' => $langId,
+                'block_data' => ['title' => $title, 'description' => '', 'button_label' => 'Descargar'],
+                'is_published' => true,
+            ];
+        }
         $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
             'block_id' => $documentBlockId,
             'owner_type' => 'entry',
@@ -619,11 +664,7 @@ final class LegacyApplyService
             'column_index' => null,
             'is_active' => true,
             'block_config' => ['document' => ['source_kind' => 'file', 'file_id' => $fileId], 'open_in_new_tab' => true],
-            'translations' => [[
-                'language_id' => $this->spanishLanguageId(),
-                'block_data' => ['title' => $title, 'description' => '', 'button_label' => 'Descargar'],
-                'is_published' => true,
-            ]],
+            'translations' => $translations,
         ]);
         $blockId = $this->extractId($response);
         $this->rememberCmsBlock($blockId, $documentBlockId, $entryId, null, 200, $fileId);
@@ -734,10 +775,14 @@ final class LegacyApplyService
         return $index;
     }
 
-    private function findCmsEntry(int $collectionId, string $slug): ?int
+    private function findCmsEntry(?int $collectionId, string $slug): ?int
     {
-        foreach ($this->list($this->cms->get('/cms/entries', ['per_page' => 500])) as $item) {
-            if ((int) ($item['collection_id'] ?? 0) !== $collectionId) {
+        if ($this->cmsEntries === null) {
+            $this->cmsEntries = $this->list($this->cms->get('/cms/entries', ['per_page' => 1000]));
+        }
+
+        foreach ($this->cmsEntries as $item) {
+            if ($collectionId !== null && (int) ($item['collection_id'] ?? 0) !== $collectionId) {
                 continue;
             }
             if ($this->stringValue($item['slug'] ?? '') === $slug) {
@@ -782,11 +827,13 @@ final class LegacyApplyService
 
     private function findCmsBlock(int $entryId, int $blockId, ?int $parentId, int $sortOrder, ?int $fileId, string $ownerType = 'entry'): ?int
     {
-        if ($this->cmsBlockInstances === null) {
-            $this->cmsBlockInstances = $this->list($this->cms->get('/cms/block-instances', ['per_page' => 10000]));
+        $cacheKey = $ownerType . ':' . $entryId;
+        if (! isset($this->cmsBlockInstances[$cacheKey])) {
+            $path = $ownerType === 'entry' ? '/cms/entries/' . $entryId . '/blocks' : '/cms/pages/' . $entryId . '/blocks';
+            $this->cmsBlockInstances[$cacheKey] = $this->list($this->cms->get($path, ['per_page' => 1000]));
         }
 
-        foreach ($this->cmsBlockInstances as $item) {
+        foreach ($this->cmsBlockInstances[$cacheKey] as $item) {
             if ((int) ($item['block_id'] ?? 0) !== $blockId || (string) ($item['owner_type'] ?? '') !== $ownerType || (int) ($item['owner_id'] ?? 0) !== $entryId || (int) ($item['sort_order'] ?? 0) !== $sortOrder) {
                 continue;
             }
@@ -817,19 +864,20 @@ final class LegacyApplyService
         return null;
     }
 
-    private function rememberCmsBlock(int $instanceId, int $blockId, int $entryId, ?int $parentId, int $sortOrder, ?int $fileId): void
+    private function rememberCmsBlock(int $instanceId, int $blockId, int $entryId, ?int $parentId, int $sortOrder, ?int $fileId, string $ownerType = 'entry'): void
     {
-        if ($this->cmsBlockInstances === null) {
+        $cacheKey = $ownerType . ':' . $entryId;
+        if (! isset($this->cmsBlockInstances[$cacheKey])) {
             return;
         }
         $config = [];
         if ($fileId !== null) {
             $config = ['image' => ['file_id' => $fileId]];
         }
-        $this->cmsBlockInstances[] = [
+        $this->cmsBlockInstances[$cacheKey][] = [
             'id' => $instanceId,
             'block_id' => $blockId,
-            'owner_type' => 'entry',
+            'owner_type' => $ownerType,
             'owner_id' => $entryId,
             'parent_instance_id' => $parentId,
             'sort_order' => $sortOrder,
@@ -980,18 +1028,6 @@ final class LegacyApplyService
         return null;
     }
 
-    private function spanishLanguageId(): int
-    {
-        $id = $this->languages['es'] ?? null;
-        if ($id === null && $this->languages !== []) {
-            $id = (int) reset($this->languages);
-        }
-        if (! is_int($id) || $id <= 0) {
-            throw new \RuntimeException('CMS has no active language available for legacy content.');
-        }
-        return $id;
-    }
-
     private function uuidFromSeed(string $seed): string
     {
         $hash = hash('sha256', $seed, true);
@@ -1112,7 +1148,7 @@ final class LegacyApplyService
             $entryId = $this->applyCmsEntry(
                 'sn_noticias',
                 $id,
-                'news',
+                'noticias',
                 $slug,
                 $this->stringValue($news['titulo'] ?? 'Noticia'),
                 $this->stringValue($news['lead'] ?? ''),
@@ -1129,6 +1165,14 @@ final class LegacyApplyService
                     $this->map($runId, 'sn_noticias', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic body block lookup');
                     $this->summary['reused']['blocks']++;
                 } else {
+                    $translations = [];
+                    foreach ($this->languages as $code => $langId) {
+                        $translations[] = [
+                            'language_id' => $langId,
+                            'block_data' => ['content' => $cuerpo],
+                            'is_published' => true,
+                        ];
+                    }
                     $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
                         'block_id' => $richTextBlockId,
                         'owner_type' => 'entry',
@@ -1138,13 +1182,7 @@ final class LegacyApplyService
                         'column_index' => null,
                         'is_active' => true,
                         'block_config' => ['css_class' => ''],
-                        'translations' => [
-                            [
-                                'language_id' => $this->spanishLanguageId(),
-                                'block_data' => ['content' => $cuerpo],
-                                'is_published' => true,
-                            ]
-                        ],
+                        'translations' => $translations,
                     ]);
                     $blockId = $this->extractId($response);
                     $this->rememberCmsBlock($blockId, $richTextBlockId, $entryId, null, 10, null);
@@ -1253,6 +1291,14 @@ final class LegacyApplyService
                     $this->map($runId, 'sn_upa', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic body block lookup');
                     $this->summary['reused']['blocks']++;
                 } else {
+                    $translations = [];
+                    foreach ($this->languages as $code => $langId) {
+                        $translations[] = [
+                            'language_id' => $langId,
+                            'block_data' => ['content' => $cuerpo],
+                            'is_published' => true,
+                        ];
+                    }
                     $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
                         'block_id' => $richTextBlockId,
                         'owner_type' => 'entry',
@@ -1262,13 +1308,7 @@ final class LegacyApplyService
                         'column_index' => null,
                         'is_active' => true,
                         'block_config' => ['css_class' => ''],
-                        'translations' => [
-                            [
-                                'language_id' => $this->spanishLanguageId(),
-                                'block_data' => ['content' => $cuerpo],
-                                'is_published' => true,
-                            ]
-                        ],
+                        'translations' => $translations,
                     ]);
                     $blockId = $this->extractId($response);
                     $this->rememberCmsBlock($blockId, $richTextBlockId, $entryId, null, 10, null);
@@ -1342,6 +1382,14 @@ final class LegacyApplyService
                     $this->map($runId, 'sn_museo', $id . ':rich_text', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic page body lookup');
                     $this->summary['reused']['blocks']++;
                 } else {
+                    $translations = [];
+                    foreach ($this->languages as $code => $langId) {
+                        $translations[] = [
+                            'language_id' => $langId,
+                            'block_data' => ['content' => $cuerpo],
+                            'is_published' => true,
+                        ];
+                    }
                     $response = $this->cms->post('/cms/entries/' . $exposicionesPageId . '/blocks', [
                         'block_id' => $richTextBlockId,
                         'owner_type' => 'page',
@@ -1351,16 +1399,10 @@ final class LegacyApplyService
                         'column_index' => null,
                         'is_active' => true,
                         'block_config' => ['css_class' => 'max-w-4xl mx-auto py-8 px-4'],
-                        'translations' => [
-                            [
-                                'language_id' => $this->spanishLanguageId(),
-                                'block_data' => ['content' => $cuerpo],
-                                'is_published' => true,
-                            ]
-                        ],
+                        'translations' => $translations,
                     ]);
                     $blockId = $this->extractId($response);
-                    $this->rememberCmsBlock($blockId, $richTextBlockId, $exposicionesPageId, null, 150, null);
+                    $this->rememberCmsBlock($blockId, $richTextBlockId, $exposicionesPageId, null, 150, null, 'page');
                     $this->map($runId, 'sn_museo', $id . ':rich_text', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'page rich text block');
                     $this->summary['created']['blocks']++;
                 }
@@ -1376,6 +1418,14 @@ final class LegacyApplyService
                         $this->map($runId, 'sn_museo', $id . ':image', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredImgBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic page image lookup');
                         $this->summary['reused']['blocks']++;
                     } else {
+                        $translations = [];
+                        foreach ($this->languages as $code => $langId) {
+                            $translations[] = [
+                                'language_id' => $langId,
+                                'block_data' => ['alt' => 'Museo Templo del Títere y el Payaso', 'caption' => 'Museo Templo del Títere y el Payaso'],
+                                'is_published' => true,
+                            ];
+                        }
                         $response = $this->cms->post('/cms/entries/' . $exposicionesPageId . '/blocks', [
                             'block_id' => $imageBlockId,
                             'owner_type' => 'page',
@@ -1385,16 +1435,10 @@ final class LegacyApplyService
                             'column_index' => null,
                             'is_active' => true,
                             'block_config' => ['image' => ['source_kind' => 'file', 'file_id' => $fileId]],
-                            'translations' => [
-                                [
-                                    'language_id' => $this->spanishLanguageId(),
-                                    'block_data' => ['alt' => 'Museo Templo del Títere y el Payaso', 'caption' => 'Museo Templo del Títere y el Payaso'],
-                                    'is_published' => true,
-                                ]
-                            ],
+                            'translations' => $translations,
                         ]);
                         $blockId = $this->extractId($response);
-                        $this->rememberCmsBlock($blockId, $imageBlockId, $exposicionesPageId, null, 160, $fileId);
+                        $this->rememberCmsBlock($blockId, $imageBlockId, $exposicionesPageId, null, 160, $fileId, 'page');
                         $this->map($runId, 'sn_museo', $id . ':image', LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'page image block');
                         $this->summary['created']['blocks']++;
                     }
