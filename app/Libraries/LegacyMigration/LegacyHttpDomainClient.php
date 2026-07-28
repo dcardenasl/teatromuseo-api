@@ -27,7 +27,7 @@ final class LegacyHttpDomainClient implements LegacyDomainClientInterface
             throw new \InvalidArgumentException('Legacy domain client bearer token cannot be empty.');
         }
 
-        $this->http = $http ?? service('curlrequest', null, false);
+        $this->http = $http ?? \Config\Services::curlrequest([], null, null, false);
     }
 
     /**
