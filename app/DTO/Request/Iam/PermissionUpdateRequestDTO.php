@@ -32,23 +32,47 @@ readonly class PermissionUpdateRequestDTO extends BaseRequestDTO
         ];
     }
 
+    /** @var array<string, mixed> */
+    private array $mappedFields;
+
+    /**
+     * NOT NULL columns (application_id, code, resource, action) never
+     * accept an explicit null — treated the same as omitting the field.
+     * description is the only nullable column: an explicit null preserves
+     * through to toArray() and actually clears it — the bug this fixes is
+     * array_filter() silently dropping every null, which made it
+     * impossible to ever clear description via update.
+     */
     protected function map(array $data): void
     {
-        $this->application_id = isset($data['application_id']) ? (int) $data['application_id'] : null;
-        $this->code = $data['code'] ?? null;
-        $this->resource = $data['resource'] ?? null;
-        $this->action = $data['action'] ?? null;
-        $this->description = $data['description'] ?? null;
+        $this->application_id = array_key_exists('application_id', $data) && $data['application_id'] !== null && $data['application_id'] !== '' ? (int) $data['application_id'] : null;
+        $this->code = array_key_exists('code', $data) && $data['code'] !== null ? (string) $data['code'] : null;
+        $this->resource = array_key_exists('resource', $data) && $data['resource'] !== null ? (string) $data['resource'] : null;
+        $this->action = array_key_exists('action', $data) && $data['action'] !== null ? (string) $data['action'] : null;
+        $this->description = array_key_exists('description', $data) && $data['description'] !== null && $data['description'] !== '' ? (string) $data['description'] : null;
+
+        $mappedFields = [];
+        if ($this->application_id !== null) {
+            $mappedFields['application_id'] = $this->application_id;
+        }
+        if ($this->code !== null) {
+            $mappedFields['code'] = $this->code;
+        }
+        if ($this->resource !== null) {
+            $mappedFields['resource'] = $this->resource;
+        }
+        if ($this->action !== null) {
+            $mappedFields['action'] = $this->action;
+        }
+        if (array_key_exists('description', $data)) {
+            $mappedFields['description'] = $this->description;
+        }
+
+        $this->mappedFields = $mappedFields;
     }
 
     public function toArray(): array
     {
-        return array_filter([
-            'application_id' => $this->application_id,
-            'code' => $this->code,
-            'resource' => $this->resource,
-            'action' => $this->action,
-            'description' => $this->description,
-        ], fn ($v) => $v !== null);
+        return $this->mappedFields;
     }
 }
