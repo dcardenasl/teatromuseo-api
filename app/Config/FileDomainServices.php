@@ -34,7 +34,17 @@ trait FileDomainServices
             static::fileReferenceRepository(),
             static::filePolicyService(),
             $binaryIngestion,
+            static::domainFileUsageClient(),
         );
+    }
+
+    public static function domainFileUsageClient(bool $getShared = true): \App\Interfaces\Files\DomainFileUsageClientInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('domainFileUsageClient');
+        }
+
+        return new \App\Libraries\Domains\DomainFileUsageClient(config('DomainWebhooks'));
     }
 
     public static function filePolicyService(bool $getShared = true): \App\Interfaces\Files\FilePolicyServiceInterface

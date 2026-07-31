@@ -29,6 +29,7 @@ class FileServiceTest extends CIUnitTestCase
     protected FileService $service;
     protected FileRepositoryInterface $mockFileRepository;
     protected \App\Interfaces\Files\FileReferenceRepositoryInterface $mockFileReferenceRepository;
+    protected \App\Interfaces\Files\DomainFileUsageClientInterface $mockDomainFileUsageClient;
     protected StorageManager $mockStorage;
     protected \App\Libraries\Files\StorageKeyGenerator $mockStorageKeyGenerator;
     protected AuditServiceInterface $mockAuditService;
@@ -74,6 +75,8 @@ class FileServiceTest extends CIUnitTestCase
         $this->mockVirusScanner = $this->createMock(\App\Interfaces\Files\VirusScannerServiceInterface::class);
         $this->mockVirusScanner->method('isSafe')->willReturnCallback(fn (): bool => $this->virusScannerResult);
         $this->mockFileReferenceRepository = $this->createMock(\App\Interfaces\Files\FileReferenceRepositoryInterface::class);
+        $this->mockDomainFileUsageClient = $this->createMock(\App\Interfaces\Files\DomainFileUsageClientInterface::class);
+        $this->mockDomainFileUsageClient->method('collectUsages')->willReturn([]);
 
         $binaryIngestion = new \App\Services\Files\FileBinaryIngestor(
             $this->mockFileRepository,
@@ -95,6 +98,7 @@ class FileServiceTest extends CIUnitTestCase
             $this->mockFileReferenceRepository,
             $this->mockFilePolicy,
             $binaryIngestion,
+            $this->mockDomainFileUsageClient,
         );
     }
 

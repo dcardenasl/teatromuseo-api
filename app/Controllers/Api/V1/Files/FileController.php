@@ -69,7 +69,7 @@ class FileController extends ApiController
 
             // For local storage, send file for direct download
             if ($result->storage_driver === 'local') {
-                $filePath = FCPATH . config('Api')->fileUploadPath . $result->path;
+                $filePath = ROOTPATH . config('Api')->fileUploadPath . $result->path;
 
                 if (file_exists($filePath)) {
                     $download = $this->response->download($filePath, null);
