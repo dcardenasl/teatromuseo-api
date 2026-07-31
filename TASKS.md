@@ -11,7 +11,12 @@
 
 ## 🟡 Próximo
 
-*(vacío)*
+- **DEPS-001 — Revisar paquetes dev abandonados (`composer audit`):** `sebastian/code-unit` y
+  `sebastian/code-unit-reverse-lookup` (transitivos de PHPUnit) aparecen marcados como
+  "abandoned" sin reemplazo sugerido por Packagist. Sin CVE asociado — no es urgente, pero
+  conviene revisar si una actualización de PHPUnit los elimina de la dependency tree, o si hay
+  que vivir con ellos indefinidamente. Detectado 2026-07-31 vía `composer audit` durante una
+  auditoría de seguridad transversal del monorepo.
 
 ## ✅ Completadas
 
