@@ -698,7 +698,19 @@ final class LegacyApplyService
         }
         $extension = pathinfo((string) $asset['absolute_path'], PATHINFO_EXTENSION);
         $uploadName = $filename . ($extension !== '' ? '.' . strtolower($extension) : '');
-        $response = $this->hub->upload('/files/upload', (string) $asset['absolute_path'], $uploadName, ['filename' => $uploadName, 'visibility' => 'public']);
+
+        try {
+            $response = $this->hub->upload('/files/upload', (string) $asset['absolute_path'], $uploadName, ['filename' => $uploadName, 'visibility' => 'public']);
+        } catch (\RuntimeException $exception) {
+            // A single asset the Hub rejects (oversized, unsupported mime type, etc.) must not
+            // abort the whole slice — record it and let the rest of the run proceed, same as an
+            // unresolved asset_missing path. Never lose the row silently.
+            $this->summary['issues']++;
+            $this->repository->recordIssue($this->currentRunId, $legacyTable, $legacyId, 'asset_rejected', null, LegacyMigrationCatalog::TARGET_HUB, 'file', null, 'asset_path', $path, null, $exception->getMessage(), 'warning');
+
+            return null;
+        }
+
         $id = $this->extractId($response);
         $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_HUB, 'file', (string) $id, LegacyMigrationCatalog::MAP_MAPPED, 'uploaded through hub file API sha256=' . (string) ($asset['sha256'] ?? ''));
         $this->summary['created']['files']++;
