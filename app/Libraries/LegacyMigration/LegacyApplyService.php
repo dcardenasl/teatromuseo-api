@@ -1131,7 +1131,7 @@ final class LegacyApplyService
             $imagePath = $this->stringValue($slide['archivo'] ?? '');
             $fileId = $imagePath !== '' ? $this->assetFile('sn_slider', $id, $imagePath, 'slide-' . $id, $runId) : null;
             $heading = $this->stringValue($slide['texto'] ?? '');
-            $link = $this->stringValue($slide['link'] ?? '');
+            $link = $this->mapLegacySliderLink($this->stringValue($slide['link'] ?? ''));
 
             $translations = [];
             foreach ($this->languages as $code => $langId) {
@@ -1163,6 +1163,36 @@ final class LegacyApplyService
             $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'home hero slide');
             $this->summary['created']['blocks']++;
         }
+    }
+
+    /**
+     * Legacy `sn_slider.link` values are absolute URLs on the old
+     * teatromuseo.cl production site (`https://teatromuseo.cl/cartelera`,
+     * `https://www.teatromuseo.cl/visitas-guiadas`, etc.). Sending those
+     * straight into `cta_url` would point the new site's own home banner at
+     * the legacy domain. teatromuseo-web's public paths are locale-agnostic
+     * relative paths (`/cartelera`, not `/es/cartelera` — the frontend
+     * prepends the active locale), so this maps each known legacy path to
+     * its real equivalent on this project; unrecognized paths fall back to
+     * home ('/') rather than leak an external legacy URL.
+     */
+    private function mapLegacySliderLink(string $legacyUrl): string
+    {
+        if ($legacyUrl === '') {
+            return '/';
+        }
+
+        $path = trim((string) (parse_url($legacyUrl, PHP_URL_PATH) ?: ''), '/');
+
+        return match ($path) {
+            '', 'index', 'index.php' => '/',
+            'cartelera' => '/cartelera',
+            'teatroescuela' => '/cursos',
+            'noticias' => '/noticias',
+            'quienes-somos' => '/nosotros',
+            'visitas-guiadas', 'eventos-masivos' => '/contacto',
+            default => '/',
+        };
     }
 
     private function findHeroSliderInstanceId(int $pageId): ?int
