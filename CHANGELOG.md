@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LegacyApplyService::applyHomeSliderSlides()`** — migrates the 5 visible `sn_slider`
   ("Index" category) legacy home banners into the home page's existing `hero_slider` block as
   `slide_banner` children.
+- **`LegacyApplyService::mapLegacySliderLink()`** — translates legacy `teatromuseo.cl` absolute
+  URLs in `sn_slider.link` into internal `teatromuseo-web` paths (`/cartelera`, `/cursos`,
+  etc.) instead of pointing the new site's own home banner at the old production domain.
 
 ### Fixed
 
