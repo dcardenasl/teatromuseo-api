@@ -130,7 +130,7 @@ final class LegacyDryRun extends BaseCommand
             return (new \App\Libraries\LegacyMigration\LegacySliceBAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash, PHP_INT_MAX, PHP_INT_MAX);
         }
         if ($slice === 'C') {
-            return (new \App\Libraries\LegacyMigration\LegacySliceCAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
+            return (new \App\Libraries\LegacyMigration\LegacySliceCAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash, PHP_INT_MAX, PHP_INT_MAX, PHP_INT_MAX);
         }
         if ($slice === 'D') {
             return (new \App\Libraries\LegacyMigration\LegacySliceDAnalyzer())->analyze($tables, $dumpPath, $sourceHash);

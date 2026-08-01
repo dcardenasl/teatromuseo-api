@@ -11,12 +11,6 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-025 — Migración completa Slice C: noticias y publicaciones.** Quitar
-  `array_slice($newsRows, 0, 20)` en `applyNoticias()` (20 de 80 hoy) y subir/quitar
-  `$pubLimit = 30` en `applyPublicaciones()` (30 de 66 hoy, combinando `sn_editorial` +
-  `sn_prensa` + `sn_administracion`). `sn_expo`/`sn_funcionarios`/`sn_museo`/`sn_upa` ya están
-  completos, no requieren cambios.
-
 - [ ] **LEGACY-MAP-026 — Decisión de diseño: sliders de páginas no-home (`sn_slider`
   categorías 2-5).** De 499 filas de `sn_slider`, solo las 5 de categoría 1 (home) están
   migradas — las de "Quienes Somos"/"Historia"/"Upa Chalupa"/"Anímate" (categorías 2-5) no tienen
@@ -25,6 +19,21 @@
   trabajo técnico.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-025 — Migración completa Slice C: noticias y publicaciones (2026-08-01):**
+  Quitados `array_slice($newsRows, 0, 20)` en `applyNoticias()` y `$pubLimit = 30` en
+  `applyPublicaciones()` (junto con el tracking de `$pubCount`, ya innecesario), y sus
+  equivalentes en `LegacyDryRun.php` (`PHP_INT_MAX` para `newsLimit`/`pubLimit` en
+  `LegacySliceCAnalyzer::analyze()`; `expoLimit`/`staffLimit` sin cambios, ya cubrían el 100% de
+  sus tablas). Sin bugs nuevos — el patrón de "relleno" que afectó a compañías en
+  LEGACY-MAP-024 no existe aquí, ambos métodos ya seleccionaban solo filas visibles reales. Fila
+  basura ya conocida en `sn_administracion` (id=6, "test") resultó tener `display=0`, así que el
+  filtro de visibilidad existente ya la excluía sin necesidad de código nuevo. 1 test de
+  regresión de escala. Ejecutado contra el dump real y cms-domain: **136 entradas** (69 noticias
+  + 49 publicaciones + 6 exposiciones + 10 personas + 2 festivales, ya completos de antes), 15
+  issues (mismo patrón conocido de tamaño/tipo de archivo), idempotencia confirmada (segunda
+  corrida: 0 creadas, 136 reusadas). Verificado en `cms_entries`: `noticias` en 70,
+  `publicaciones` en 47. `composer quality` ✅ (688/688 tests, 2 skips preexistentes).
 
 - **LEGACY-MAP-024 — Migración completa Slice A: obras, compañías, galería y videos
   (2026-08-01):** Quitados los 3 límites hardcodeados en `applyWorks()` (10 obras, 3 compañías,

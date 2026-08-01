@@ -318,6 +318,44 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $mapped = $repository->findMap('sn_obra', '692', LegacyMigrationCatalog::TARGET_CMS, 'entry');
         $this->assertSame(LegacyMigrationCatalog::MAP_MAPPED, $mapped['status']);
     }
+
+    public function testSliceCMigratesMoreThanTwentyNewsAndMoreThanThirtyPublications(): void
+    {
+        $hash = hash('sha256', 'legacy-news-scale-fixture');
+        // IDs offset into the 900s so they can never collide with legacy_migration_map rows
+        // left behind by other tests in this file — that table isn't rolled back between tests.
+        $news = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $news[] = ['id_noticias' => (string) (900 + $i), 'titulo' => 'Noticia ' . $i, 'url' => 'noticia-' . $i, 'lead' => 'Lead', 'cuerpo' => 'Cuerpo'];
+        }
+        $editorial = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $editorial[] = ['id' => (string) (900 + $i), 'titulo' => 'Editorial ' . $i, 'url' => 'editorial-' . $i];
+        }
+        $prensa = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $prensa[] = ['id' => (string) (930 + $i), 'titulo' => 'Prensa ' . $i, 'url' => 'prensa-' . $i];
+        }
+        $administracion = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $administracion[] = ['id' => (string) (960 + $i), 'titulo' => 'Admin ' . $i, 'url' => 'admin-' . $i];
+        }
+        $tables = [
+            'sn_noticias' => $news,
+            'sn_editorial' => $editorial,
+            'sn_prensa' => $prensa,
+            'sn_administracion' => $administracion,
+        ];
+
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-news-scale-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/news-scale-fixture.sql', $hash);
+
+        $summary = $service->apply('C', $tables, '/tmp/news-scale-fixture.sql', $runId);
+
+        $this->assertSame(25 + 45, $summary['created']['cms_entries']); // 25 news + 45 publications (15+15+15)
+    }
 }
 
 /**
@@ -353,6 +391,8 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 4, 'collection_key' => 'personas'],
                 ['id' => 5, 'collection_key' => 'cursos'],
                 ['id' => 6, 'collection_key' => 'festivales'],
+                ['id' => 7, 'collection_key' => 'noticias'],
+                ['id' => 8, 'collection_key' => 'publicaciones'],
             ]]],
             '/cms/languages' => ['data' => ['items' => [['id' => 1, 'code' => 'es']]]],
             '/cms/block-types' => ['data' => ['items' => [

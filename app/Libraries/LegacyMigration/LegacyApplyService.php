@@ -1277,7 +1277,6 @@ final class LegacyApplyService
     {
         $newsRows = $this->visibleRows($tables['sn_noticias'] ?? [], 'disp_noticias');
         usort($newsRows, fn (array $left, array $right): int => $this->numericId($left, 'id_noticias') <=> $this->numericId($right, 'id_noticias'));
-        $newsRows = array_slice($newsRows, 0, 20);
 
         foreach ($newsRows as $news) {
             $id = $this->stringValue($news['id_noticias'] ?? '');
@@ -1328,19 +1327,12 @@ final class LegacyApplyService
             'sn_prensa' => 'press',
             'sn_administracion' => 'transparency',
         ];
-        $pubLimit = 30;
-        $pubCount = 0;
 
         foreach ($pubSources as $table => $type) {
-            if ($pubCount >= $pubLimit) {
-                break;
-            }
             $pubRows = $this->visibleRows($tables[$table] ?? [], 'display');
             usort($pubRows, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
-            $selectedPubs = array_slice($pubRows, 0, max(0, $pubLimit - $pubCount));
-            $pubCount += count($selectedPubs);
 
-            foreach ($selectedPubs as $pub) {
+            foreach ($pubRows as $pub) {
                 $id = $this->stringValue($pub['id'] ?? '');
                 if ($id === '') {
                     $this->summary['issues']++;
