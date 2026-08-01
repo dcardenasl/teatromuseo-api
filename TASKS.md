@@ -19,11 +19,30 @@
   paquete Composer externo, no en este repo — requiere fix en la fuente de `ci4-api-core`.
   Encontrado 2026-08-01 corrigiendo `cta_url` de las slides del home slider (ver
   `../docs/legacy-cms-pilot-mapping.md` sección 12.3).
-- [ ] **LEGACY-MAP-018 — Decisión pendiente: páginas TeatroEscuela y Anímate.** `sn_banner`,
-  `sn_section` y `sn_page_description` referencian páginas que no existen en la IA actual del
-  sitio nuevo; requiere decisión de diseño de página/navegación antes de poder migrarlas.
-
 ## ✅ Completadas
+
+- **LEGACY-MAP-018 — Decidir páginas TeatroEscuela y Anímate (2026-08-01):** David decidió
+  ambas partes directamente:
+  1. **TeatroEscuela**: sin migrar. `sn_banner` (1 fila, "becas teatroescuela"), `sn_section`
+     ids 1-2 (`teatroescuela`/`teatroescuela-historico`) y `sn_page_description` id=10 quedan
+     explícitamente superados por el módulo Cursos ya existente — no había nada más que hacer.
+  2. **Anímate**: es uno de los festivales de la fundación, no una obra suelta. El legacy solo
+     tiene **un** registro real (`sn_obra` id=692, url=`animate`: IX Encuentro Internacional de
+     Títeres Anímate, 2024-11-02) — nunca se había migrado (no estaba en `legacy_migration_map`,
+     fuera de la ventana de los primeros 10 `id_obra` que procesa Slice A). Se migra ahora como
+     el segundo item de la colección `festivales` (mismo patrón plano que "Upa Chalupa" — sin
+     jerarquía padre/hijo; cada versión futura del festival será, igual que esta, un item más de
+     la colección), no como `obras`. Slug `animate-2024` (misma convención año que
+     `upa-chalupa-2019`, confirmado con David). Nueva rama en `LegacySliceCAnalyzer` +
+     `LegacyApplyService::applyFestivales()` que filtra `sn_obra` por `url='animate'`; `sn_obra`
+     agregado a las tablas de Slice C (`legacy:dry-run`/`legacy:apply`) sin tocarlo en Slice A.
+     Ejecutado contra el dump real y cms-domain corriendo: 1 entrada nueva creada (id=141,
+     colección `festivales`, slug `animate-2024`), las 67 entradas previas de Slice C
+     reutilizadas sin cambios (idempotencia confirmada en segunda corrida: 0 creadas, 68
+     reusadas). La imagen de portada (`foto_obra`) no se pudo resolver contra el `asset-root`
+     local (subida a producción después del último snapshot, mismo patrón que LEGACY-MAP-021) —
+     entrada creada sin imagen, pendiente decidir si se descarga de `teatromuseo.cl` como se hizo
+     con el slider. `composer quality` ✅ (682/682 tests, 2 skips preexistentes).
 
 - **LEGACY-MAP-017 — Migrar `sn_contact_message` (157 filas de PII) (2026-08-01):** David
   confirmó: migrar el histórico completo (nombre/email/teléfono/mensaje reales), sin
