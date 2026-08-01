@@ -12,6 +12,8 @@ namespace App\Libraries\LegacyMigration;
  * - sn_noticias -> news
  * - sn_editorial, sn_prensa, sn_administracion -> publicaciones
  * - sn_upa -> festivales
+ * - sn_obra (url=animate) -> festivales (Anímate is its own recurring festival, not a
+ *   one-off show — see LEGACY-MAP-018; every edition gets its own festivales item)
  * - sn_funcionarios -> personas
  * - sn_museo -> static page blocks for exposiciones index page
  */
@@ -188,6 +190,27 @@ final class LegacySliceCAnalyzer
             $mappings[] = $this->mapping('sn_upa', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'festivales:' . $slug, $sourceHash);
         }
 
+        // 4b. Festivales — Anímate editions (sn_obra where url = 'animate')
+        $animateRows = array_values(array_filter(
+            $tables['sn_obra'] ?? [],
+            fn (array $row): bool => $this->stringValue($row['url'] ?? '') === 'animate'
+        ));
+        foreach ($animateRows as $animate) {
+            $legacyId = $this->stringValue($animate['id_obra'] ?? '');
+            if ($legacyId === '') {
+                $issues[] = $this->issue('sn_obra', '', 'missing_identity', 'id_obra', 'Anímate edition has no legacy identity.', 'error');
+                continue;
+            }
+            $slug = 'animate-2024'; // IX Encuentro Internacional de Títeres Anímate
+            $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'festivales:' . $slug, $sourceHash);
+
+            $imgPath = $this->stringValue($animate['foto_obra'] ?? '');
+            if ($imgPath !== '') {
+                $assets[] = $this->asset($imgPath) + ['legacy_table' => 'sn_obra', 'legacy_id' => $legacyId, 'field' => 'foto_obra'];
+                $this->appendAssetIssue($issues, 'sn_obra', $legacyId, $assets[array_key_last($assets)]);
+            }
+        }
+
         // 5. Funcionarios / Staff (sn_funcionarios)
         $staffRows = $this->visibleRows($tables['sn_funcionarios'] ?? [], 'display');
         usort($staffRows, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
@@ -251,7 +274,7 @@ final class LegacySliceCAnalyzer
                 'exposiciones' => count($selectedExpos),
                 'noticias' => count($selectedNews),
                 'publicaciones' => $pubCount,
-                'festivales' => count($upaRows),
+                'festivales' => count($upaRows) + count($animateRows),
                 'personas' => count($selectedStaff),
                 'museo' => count($museoRows),
             ],

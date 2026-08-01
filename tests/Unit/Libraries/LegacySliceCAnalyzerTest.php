@@ -63,4 +63,30 @@ final class LegacySliceCAnalyzerTest extends TestCase
         // Find issues: date issue warning for expo 2
         $this->assertNotEmpty(array_filter($report['issues'], static fn (array $issue): bool => $issue['issue_class'] === 'invalid_date'));
     }
+
+    public function testAnimateEditionIsPlannedAsAFestivalNotAGenericWork(): void
+    {
+        $report = (new LegacySliceCAnalyzer())->analyze([
+            'sn_obra' => [
+                [
+                    'id_obra' => '692',
+                    'titulo_obra' => 'Animate',
+                    'fecha_obra' => '2024-11-02',
+                    'foto_obra' => '/images/cartelera/full/2-nov.png',
+                    'descripcion_corta_obra' => 'IX Encuentro Internacional de Títeres Animate',
+                    'descripcion_larga_obra' => 'IX Encuentro Internacional de Títeres Animate',
+                    'display' => '1',
+                    'url' => 'animate',
+                ],
+                // A regular show sharing sn_obra but not the festival's url must be ignored here.
+                ['id_obra' => '1', 'titulo_obra' => 'Otra obra', 'url' => 'otra-obra', 'display' => '1'],
+            ],
+        ], '/tmp/fixture.sql', str_repeat('a', 64));
+
+        $this->assertSame(1, $report['summary']['slice_rows_selected']['festivales']);
+        $animateMappings = array_values(array_filter($report['mappings'], static fn (array $m): bool => $m['legacy_table'] === 'sn_obra'));
+        $this->assertCount(1, $animateMappings);
+        $this->assertSame('692', $animateMappings[0]['legacy_id']);
+        $this->assertSame('festivales:animate-2024', $animateMappings[0]['target_key']);
+    }
 }

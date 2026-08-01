@@ -76,7 +76,7 @@ final class LegacyApply extends BaseCommand
             $sourceHash = $reader->sourceHash();
             $targetTables = match ($slice) {
                 'B' => ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela'],
-                'C' => ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_funcionarios', 'sn_museo', 'sn_slider'],
+                'C' => ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_obra', 'sn_funcionarios', 'sn_museo', 'sn_slider'],
                 'D' => ['sn_contact_message', 'sn_contact_status'],
                 default => ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube', 'sn_publico'],
             };

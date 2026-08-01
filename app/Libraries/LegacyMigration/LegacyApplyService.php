@@ -1447,6 +1447,38 @@ final class LegacyApplyService
                 }
             }
         }
+
+        // Anímate is its own recurring festival, not a one-off show (LEGACY-MAP-018,
+        // confirmed by David): every edition gets its own festivales entry instead of
+        // going through the generic sn_obra -> obras path in applyWorks(). The legacy
+        // dump only has one edition on record (id_obra=692, IX, 2024) — future editions
+        // get added here the same way as new legacy/real data becomes available.
+        foreach ($tables['sn_obra'] ?? [] as $work) {
+            if ($this->stringValue($work['url'] ?? '') !== 'animate') {
+                continue;
+            }
+            $id = $this->stringValue($work['id_obra'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+
+            $this->applyCmsEntry(
+                'sn_obra',
+                $id,
+                'festivales',
+                'animate-2024',
+                $this->stringValue($work['descripcion_corta_obra'] ?? 'Anímate'),
+                $this->stringValue($work['descripcion_larga_obra'] ?? ''),
+                [
+                    'subtitle' => $this->stringValue($work['descripcion_corta_obra'] ?? ''),
+                    'edition_date' => $this->validDate($work['fecha_obra'] ?? null) ? $this->stringValue($work['fecha_obra']) : null,
+                    'venue' => $this->stringValue($work['direccion_obra'] ?? ''),
+                ],
+                $runId,
+                $this->assetFile('sn_obra', $id, $work['foto_obra'] ?? null, 'animate-2024', $runId)
+            );
+        }
     }
 
     /** @param array<string, list<array<string, mixed>>> $tables */

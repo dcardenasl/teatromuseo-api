@@ -111,7 +111,7 @@ final class LegacyDryRun extends BaseCommand
             return ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela'];
         }
         if ($slice === 'C') {
-            return ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_funcionarios', 'sn_museo'];
+            return ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_obra', 'sn_funcionarios', 'sn_museo'];
         }
         if ($slice === 'D') {
             return ['sn_contact_message', 'sn_contact_status'];

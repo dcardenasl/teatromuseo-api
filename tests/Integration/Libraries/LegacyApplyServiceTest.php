@@ -187,6 +187,55 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $mapped = $repository->findMap('sn_contact_message', '16', LegacyMigrationCatalog::TARGET_CMS, 'form_submission');
         $this->assertSame(LegacyMigrationCatalog::MAP_MAPPED, $mapped['status']);
     }
+
+    public function testSliceCSendsAnimateEditionToFestivalesNotObras(): void
+    {
+        $hash = hash('sha256', 'legacy-animate-fixture');
+        $tables = [
+            'sn_obra' => [
+                [
+                    'id_obra' => '692',
+                    'titulo_obra' => 'Animate',
+                    'hora_obra' => '19:30 Hrs',
+                    'fecha_obra' => '2024-11-02',
+                    'valor1_obra' => 'Gratuito',
+                    'valor2_obra' => 'Gratuito',
+                    'direccion_obra' => 'Cárcel 471, Valparaíso',
+                    'foto_obra' => '/images/cartelera/full/2-nov.png',
+                    'descripcion_corta_obra' => 'IX Encuentro Internacional de Títeres Animate',
+                    'descripcion_larga_obra' => 'IX Encuentro Internacional de Títeres Animate',
+                    'id_publico' => '3',
+                    'id_compania' => '30',
+                    'display' => '1',
+                    'url' => 'animate',
+                ],
+            ],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+
+        $firstRun = $repository->createRun('legacy-animate-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/animate-fixture.sql', $hash);
+        $first = $service->apply('C', $tables, '/tmp/animate-fixture.sql', $firstRun);
+        $repository->finishRun($firstRun, LegacyMigrationCatalog::RUN_COMPLETED, $first);
+
+        $secondRun = $repository->createRun('legacy-animate-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/animate-fixture.sql', $hash);
+        $second = $service->apply('C', $tables, '/tmp/animate-fixture.sql', $secondRun);
+        $repository->finishRun($secondRun, LegacyMigrationCatalog::RUN_COMPLETED, $second);
+
+        $this->assertSame(1, $first['created']['cms_entries']);
+        $this->assertSame(0, $second['created']['cms_entries']);
+        $this->assertSame(1, $second['reused']['cms_entries']);
+
+        $entries = $client->payloads('/cms/entries');
+        $this->assertCount(1, $entries);
+        $this->assertSame(6, $entries[0]['collection_id']); // 'festivales', not 'obras' (id 2)
+        $this->assertSame('animate-2024', $entries[0]['translations'][0]['slug']);
+        $this->assertSame('IX Encuentro Internacional de Títeres Animate', $entries[0]['translations'][0]['title']);
+
+        $mapped = $repository->findMap('sn_obra', '692', LegacyMigrationCatalog::TARGET_CMS, 'entry');
+        $this->assertSame(LegacyMigrationCatalog::MAP_MAPPED, $mapped['status']);
+    }
 }
 
 /**
@@ -221,6 +270,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 3, 'collection_key' => 'videos'],
                 ['id' => 4, 'collection_key' => 'personas'],
                 ['id' => 5, 'collection_key' => 'cursos'],
+                ['id' => 6, 'collection_key' => 'festivales'],
             ]]],
             '/cms/languages' => ['data' => ['items' => [['id' => 1, 'code' => 'es']]]],
             '/cms/block-types' => ['data' => ['items' => [
