@@ -11,15 +11,21 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-020 — Reportar/parchear bug de `ci4-api-core`: update solo-translations rechazado.**
-  `HasDeferredTranslations::deferTranslationsFromUpdate()` extrae `translations` de `$data`
-  antes de que `BaseCrudService::update()` (paquete vendored `dcardenasl/ci4-api-core`) revise
-  `empty($data)` — un update que sólo cambia traducciones (sin tocar otro campo) siempre
-  devuelve 400. Afecta a Entry/Menu/MenuItem/Page/BlockInstance/Collection/Setting. Vive en un
-  paquete Composer externo, no en este repo — requiere fix en la fuente de `ci4-api-core`.
-  Encontrado 2026-08-01 corrigiendo `cta_url` de las slides del home slider (ver
-  `../docs/legacy-cms-pilot-mapping.md` sección 12.3).
+*(vacío)*
+
 ## ✅ Completadas
+
+- **LEGACY-MAP-020 — Parchear bug de `ci4-api-core`: update solo-translations rechazado
+  (2026-08-01):** Fix en la fuente del paquete (`fix(services): don't reject update() when
+  beforeUpdate() defers all fields`), released v1.1.1. `BaseCrudService::update()` ahora revisa
+  `empty($data)` sobre el payload crudo antes de `beforeUpdate()` (no después), y salta el
+  `repository->update()` directo — sin abortar el flujo — cuando `beforeUpdate()` deja todo
+  diferido; `afterUpdate()` siempre corre. Verificado en vivo contra `teatromuseo-cms-domain`
+  antes del release. `teatromuseo-api`, `teatromuseo-cms-domain`, `teatromuseo-catalog-domain`,
+  `teatromuseo-event-domain` y `teatromuseo-bff` actualizados a v1.1.1 (`composer update`, suite
+  completa + PHPStan verde en cada uno; `teatromuseo-api` requirió corregir la firma de
+  `FakeApiKeyRepository::findAll()` al `?int $limit = null` de la 1.1.0, que nunca había
+  adoptado).
 
 - **LEGACY-MAP-018 — Decidir páginas TeatroEscuela y Anímate (2026-08-01):** David decidió
   ambas partes directamente:
@@ -41,8 +47,17 @@
      reutilizadas sin cambios (idempotencia confirmada en segunda corrida: 0 creadas, 68
      reusadas). La imagen de portada (`foto_obra`) no se pudo resolver contra el `asset-root`
      local (subida a producción después del último snapshot, mismo patrón que LEGACY-MAP-021) —
-     entrada creada sin imagen, pendiente decidir si se descarga de `teatromuseo.cl` como se hizo
-     con el slider. `composer quality` ✅ (682/682 tests, 2 skips preexistentes).
+     entrada creada sin imagen inicialmente. `composer quality` ✅ (682/682 tests, 2 skips
+     preexistentes). **Seguimiento (2026-08-01):** con autorización explícita de David, se
+     descargó `2-nov-6722a7e615889.png` desde `https://teatromuseo.cl` (906 KB, confirmada
+     pública) al `asset-root` local, se subió al hub (`POST /files/upload`, file id=147,
+     registrado en `legacy_migration_map` como `sn_obra:692 → api:file:147` para trazabilidad y
+     evitar re-subidas en un futuro re-run), y se actualizó `cms_entries` id=141 en cms-domain
+     con `featured_image` apuntando a ese archivo en los 4 idiomas. El update de solo-traducciones
+     hubiera chocado con el bug de LEGACY-MAP-020 (`ci4-api-core`); se evitó incluyendo
+     `sort_order` (mismo valor, sin cambio real) en el mismo payload — mismo workaround usado en
+     el fix del home slider. Verificado con GET: las 4 traducciones resuelven `featured_image`
+     con `source_kind=hub_file` y variantes (lg/md/sm/thumb) generadas.
 
 - **LEGACY-MAP-017 — Migrar `sn_contact_message` (157 filas de PII) (2026-08-01):** David
   confirmó: migrar el histórico completo (nombre/email/teléfono/mensaje reales), sin
