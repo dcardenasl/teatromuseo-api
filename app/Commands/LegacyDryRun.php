@@ -136,7 +136,7 @@ final class LegacyDryRun extends BaseCommand
             return (new \App\Libraries\LegacyMigration\LegacySliceDAnalyzer())->analyze($tables, $dumpPath, $sourceHash);
         }
 
-        return (new LegacySliceAAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
+        return (new LegacySliceAAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash, PHP_INT_MAX, PHP_INT_MAX, PHP_INT_MAX);
     }
 
     private function defaultDumpPath(): string

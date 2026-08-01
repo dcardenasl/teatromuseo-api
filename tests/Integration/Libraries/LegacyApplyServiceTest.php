@@ -75,6 +75,60 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame('2026-08-02', $entries[2]['wizard_extra']['recorded_at']);
     }
 
+    public function testSliceAMigratesMoreThanTenWorksAndExcludesKnownTestRows(): void
+    {
+        $hash = hash('sha256', 'legacy-work-scale-fixture');
+        // IDs offset into the 900s so they can never collide with legacy_migration_map rows
+        // left behind by other tests in this file — that table isn't rolled back between tests.
+        $companies = [];
+        for ($c = 1; $c <= 4; $c++) {
+            $companies[] = ['id_compania' => (string) (900 + $c), 'nombre_compania' => 'Compañía ' . $c, 'display_comp' => '1'];
+        }
+        $works = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $works[] = [
+                'id_obra' => (string) (900 + $i),
+                'titulo_obra' => 'Obra ' . $i,
+                'url' => 'obra-' . $i,
+                'fecha_obra' => '2026-08-01',
+                'hora_obra' => '20:00',
+                'valor1_obra' => '$ 1.000',
+                'valor2_obra' => '$ 800',
+                'direccion_obra' => 'Teatromuseo',
+                'id_publico' => '1',
+                'id_compania' => (string) (900 + (($i % 4) + 1)),
+                'display' => '1',
+            ];
+        }
+        // LEGACY-MAP-022/024: confirmed junk rows must never become entries, even unlimited.
+        $works[] = ['id_obra' => '9001', 'titulo_obra' => 'Test', 'url' => 'test-a', 'display' => '1'];
+        $works[] = ['id_obra' => '9002', 'titulo_obra' => 'TEst', 'url' => 'test-b', 'display' => '1'];
+
+        $videos = [];
+        for ($v = 1; $v <= 6; $v++) {
+            $videos[] = ['id_youtube' => (string) (900 + $v), 'url' => 'video-' . $v, 'nombre' => 'Video ' . $v, 'fecha' => '2026-08-02', 'display' => '1'];
+        }
+
+        $tables = [
+            'sn_compania' => $companies,
+            'sn_obra' => $works,
+            'sn_slider_cartelera' => [],
+            'sn_youtube' => $videos,
+            'sn_publico' => [['id_publico' => '1', 'nombre_publico' => 'Familiar']],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-work-scale-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/work-scale-fixture.sql', $hash);
+
+        $summary = $service->apply('A', $tables, '/tmp/work-scale-fixture.sql', $runId);
+
+        $this->assertSame(12 + 4 + 6, $summary['created']['cms_entries']); // works + companies + videos
+        $this->assertSame(12, $summary['created']['events']);
+        $this->assertNull($repository->findMap('sn_obra', '9001', LegacyMigrationCatalog::TARGET_CMS, 'entry'));
+        $this->assertNull($repository->findMap('sn_obra', '9002', LegacyMigrationCatalog::TARGET_CMS, 'entry'));
+    }
+
     public function testSliceBSecondPassReusesCourseTeacherAndSupplementalMapping(): void
     {
         $hash = hash('sha256', 'legacy-course-fixture');

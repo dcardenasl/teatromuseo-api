@@ -76,8 +76,12 @@ final class LegacyApplyService
     private function applyWorks(array $tables, int $runId): void
     {
         $workRows = $this->visibleRows($tables['sn_obra'] ?? [], 'display');
+        // Confirmed junk rows (David, LEGACY-MAP-022): test content, not real shows.
+        $workRows = array_values(array_filter(
+            $workRows,
+            fn (array $work): bool => ! in_array($this->stringValue($work['titulo_obra'] ?? ''), ['Test', 'TEst'], true)
+        ));
         usort($workRows, fn (array $left, array $right): int => $this->numericId($left, 'id_obra') <=> $this->numericId($right, 'id_obra'));
-        $workRows = array_slice($workRows, 0, 10);
 
         $audiences = [];
         foreach ($tables['sn_publico'] ?? [] as $audience) {
@@ -92,13 +96,7 @@ final class LegacyApplyService
         $referencedCompanyIds = [];
         foreach ($workRows as $work) {
             $companyId = $this->stringValue($work['id_compania'] ?? '');
-            if ($companyId !== '' && ! isset($referencedCompanyIds[$companyId]) && count($referencedCompanyIds) < 3) {
-                $referencedCompanyIds[$companyId] = true;
-            }
-        }
-        foreach ($companyRows as $company) {
-            $companyId = $this->stringValue($company['id_compania'] ?? '');
-            if ($companyId !== '' && count($referencedCompanyIds) < 3) {
+            if ($companyId !== '') {
                 $referencedCompanyIds[$companyId] = true;
             }
         }
@@ -200,7 +198,7 @@ final class LegacyApplyService
                 $videoGroups[$key][] = $video;
             }
         }
-        foreach (array_slice($videoGroups, 0, 5, true) as $videoKey => $group) {
+        foreach ($videoGroups as $videoKey => $group) {
             $video = $group[0];
             $videoId = $this->stringValue($video['id_youtube'] ?? '');
             if ($videoId === '') {

@@ -89,23 +89,52 @@ final class LegacyHttpDomainClient implements LegacyDomainClientInterface
             $headers['Content-Type'] = 'application/json';
         }
 
-        $response = $this->http->request($method, rtrim($this->baseUrl, '/') . $path, [
-            'http_errors' => false,
-            'timeout'     => $this->timeout,
-            'headers'     => $headers,
-        ] + $options);
-        $status = $response->getStatusCode();
-        $body = (string) $response->getBody();
-        $decoded = json_decode($body, true);
+        $maxRetries = 3;
+        for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
+            $response = $this->http->request($method, rtrim($this->baseUrl, '/') . $path, [
+                'http_errors' => false,
+                'timeout'     => $this->timeout,
+                'headers'     => $headers,
+            ] + $options);
+            $status = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $decoded = json_decode($body, true);
 
-        if ($status < 200 || $status >= 300) {
-            $detail = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $body;
-            throw new \RuntimeException("Legacy domain request {$method} {$path} failed with HTTP {$status}: " . substr((string) $detail, 0, 1000));
-        }
-        if (! is_array($decoded)) {
-            throw new \RuntimeException("Legacy domain request {$method} {$path} returned invalid JSON.");
+            if ($status === 429 && $attempt < $maxRetries) {
+                // Bulk migration runs (e.g. thousands of asset uploads) legitimately exceed a
+                // per-minute rate limit in a tight loop. The limit resets on its own — back off
+                // and retry rather than permanently recording every throttled item as rejected.
+                sleep($this->retryAfterSeconds($decoded, $response));
+                continue;
+            }
+
+            if ($status < 200 || $status >= 300) {
+                $detail = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $body;
+                throw new \RuntimeException("Legacy domain request {$method} {$path} failed with HTTP {$status}: " . substr((string) $detail, 0, 1000));
+            }
+            if (! is_array($decoded)) {
+                throw new \RuntimeException("Legacy domain request {$method} {$path} returned invalid JSON.");
+            }
+
+            return $decoded;
         }
 
-        return $decoded;
+        throw new \RuntimeException("Legacy domain request {$method} {$path} still rate-limited after {$maxRetries} retries.");
+    }
+
+    /**
+     * @param mixed $decodedBody
+     */
+    private function retryAfterSeconds($decodedBody, \CodeIgniter\HTTP\ResponseInterface $response): int
+    {
+        if (is_array($decodedBody) && isset($decodedBody['retry_after']) && is_numeric($decodedBody['retry_after'])) {
+            return max(1, (int) $decodedBody['retry_after']);
+        }
+        $header = $response->getHeaderLine('Retry-After');
+        if ($header !== '' && is_numeric($header)) {
+            return max(1, (int) $header);
+        }
+
+        return 60;
     }
 }

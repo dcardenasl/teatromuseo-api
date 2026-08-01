@@ -11,13 +11,6 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-024 — Migración completa Slice A: obras, compañías, galería y videos.** Quitar
-  `array_slice($workRows, 0, 10)`, el cap `count($referencedCompanyIds) < 3`, y
-  `array_slice($videoGroups, 0, 5, true)` en `applyWorks()`. Hoy: 11 de 759 `sn_obra`, 3 de 235
-  `sn_compania`, 5 de 53 `sn_youtube`. La más grande — probablemente conviene correrla en varias
-  pasadas controladas en vez de una sola corrida masiva, dado el volumen de llamadas HTTP y de
-  imágenes (`sn_slider_cartelera`, 1320 filas, escala junto con esta).
-
 - [ ] **LEGACY-MAP-025 — Migración completa Slice C: noticias y publicaciones.** Quitar
   `array_slice($newsRows, 0, 20)` en `applyNoticias()` (20 de 80 hoy) y subir/quitar
   `$pubLimit = 30` en `applyPublicaciones()` (30 de 66 hoy, combinando `sn_editorial` +
@@ -32,6 +25,34 @@
   trabajo técnico.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-024 — Migración completa Slice A: obras, compañías, galería y videos
+  (2026-08-01):** Quitados los 3 límites hardcodeados en `applyWorks()` (10 obras, 3 compañías,
+  5 videos) y sus equivalentes en `LegacyDryRun.php` (ahora pasa `PHP_INT_MAX` a
+  `LegacySliceAAnalyzer::analyze()`). Implementada la exclusión de las 2 filas basura de
+  `sn_obra` ("Test"/"TEst") confirmada en LEGACY-MAP-022, en `applyWorks()` y en el analyzer.
+  Encontrados y corregidos 2 bugs reales en el camino:
+  1. **Rate limiting sin manejar**: el hub limita `/files/upload` a 60 req/60s; con ~1400 subidas
+     en ráfaga la mayoría (1152) chocó con HTTP 429 y quedó registrada como `asset_rejected`
+     permanentemente. `LegacyHttpDomainClient::request()` ahora reintenta automáticamente hasta
+     3 veces en cualquier 429, respetando `retry_after` del cuerpo de la respuesta (o el header
+     `Retry-After`, o 60s por defecto) — no solo en `/files/upload`, en cualquier request. Con el
+     fix, una segunda corrida bajó los issues de 1152 a 11 (todos legítimos: tamaño/tipo de
+     archivo, mismo patrón ya documentado en LEGACY-MAP-016/019 — decisión de `FILE_MAX_SIZE`
+     sigue sin tomarse unilateralmente).
+  2. **`LegacySliceAAnalyzer` sobre-reportaba compañías**: tenía el mismo patrón de "relleno"
+     (rellenar hasta `companyLimit` con compañías arbitrarias no referenciadas) que ya se había
+     quitado de `applyWorks()`, pero no del analyzer — con el límite en `PHP_INT_MAX` esto hacía
+     que planeara las 230 compañías completas en vez de solo las realmente referenciadas por
+     obras visibles. Los datos reales nunca estuvieron mal (`apply()` siempre fue correcto, solo
+     creó compañías con al menos una obra visible que las referencia); era el reporte de
+     dry-run el que mentía. Corregido: el analyzer ahora solo planea compañías efectivamente
+     referenciadas, igual que `applyWorks()`. 2 tests nuevos de regresión (rate-limit retry +
+     no-padding de compañías) más 1 test de escala/exclusión de basura para `applyWorks()`.
+  Ejecutado contra el dump real y cms-domain: **625 entradas** (369 obras + 214 compañías + 46
+  videos, verificado directo en `cms_entries`), 368 eventos, 638 ocurrencias, 1111+ items de
+  galería, idempotencia confirmada en corridas repetidas (0 creadas, todo reusado). `composer
+  quality` ✅ (687/687 tests, 2 skips preexistentes).
 
 - **LEGACY-MAP-023 — Migración completa Slice B: cursos y profesores (2026-08-01):** Quitados
   los límites hardcodeados en `LegacyApplyService::applyCourses()` (`array_slice($courses, 0, 3)`

@@ -46,6 +46,28 @@ final class LegacySliceAAnalyzerTest extends TestCase
         $this->assertNotEmpty(array_filter($report['issues'], static fn (array $issue): bool => $issue['issue_class'] === 'duplicate_video'));
     }
 
+    public function testDoesNotPadCompaniesWithUnreferencedRows(): void
+    {
+        // LEGACY-MAP-024: companyLimit is no longer meant to pad the plan up to N companies
+        // regardless of whether anything references them — only companies a selected work
+        // actually points to should ever be planned, matching applyWorks()'s real behavior.
+        $report = (new LegacySliceAAnalyzer())->analyze([
+            'sn_compania' => [
+                ['id_compania' => '1', 'nombre_compania' => 'Compañía Referenciada', 'display_comp' => '1'],
+                ['id_compania' => '2', 'nombre_compania' => 'Compañía Huérfana', 'display_comp' => '1'],
+            ],
+            'sn_obra' => [
+                ['id_obra' => '1', 'titulo_obra' => 'Obra Uno', 'url' => 'obra-uno', 'fecha_obra' => '2020-01-01', 'id_publico' => '1', 'id_compania' => '1', 'display' => '1'],
+            ],
+            'sn_slider_cartelera' => [],
+            'sn_youtube' => [],
+        ], '/tmp/fixture.sql', str_repeat('a', 64), 10, 5, 3);
+
+        $companyMappings = array_values(array_filter($report['mappings'], static fn (array $m): bool => $m['legacy_table'] === 'sn_compania'));
+        $this->assertCount(1, $companyMappings);
+        $this->assertSame('1', $companyMappings[0]['legacy_id']);
+    }
+
     public function testUnknownGalleryRowsAreQuarantined(): void
     {
         $report = (new LegacySliceAAnalyzer())->analyze([

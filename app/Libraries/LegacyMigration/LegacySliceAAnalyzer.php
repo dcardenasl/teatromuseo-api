@@ -34,6 +34,11 @@ final class LegacySliceAAnalyzer
         int $companyLimit = 3
     ): array {
         $workRows = $this->visibleRows($tables['sn_obra'] ?? [], 'display');
+        // Confirmed junk rows (David, LEGACY-MAP-022): test content, not real shows.
+        $workRows = array_values(array_filter(
+            $workRows,
+            fn (array $work): bool => ! in_array($this->stringValue($work['titulo_obra'] ?? ''), ['Test', 'TEst'], true)
+        ));
         usort($workRows, fn (array $left, array $right): int => $this->numericId($left, 'id_obra') <=> $this->numericId($right, 'id_obra'));
         $selectedWorks = array_slice($workRows, 0, max(0, $workLimit));
         $selectedWorkIds = [];
@@ -102,16 +107,10 @@ final class LegacySliceAAnalyzer
                 $referencedCompanyIds[] = $companyId;
             }
         }
+        // Only companies actually referenced by a selected work — padding this out with
+        // arbitrary unreferenced companies (the pre-LEGACY-MAP-024 pilot behavior) over-reports
+        // at full scale, since applyWorks() never creates a company nothing points to.
         $companyIds = array_fill_keys(array_slice($referencedCompanyIds, 0, max(0, $companyLimit)), true);
-        foreach ($companyRows as $company) {
-            if (count($companyIds) >= max(0, $companyLimit)) {
-                break;
-            }
-            $companyId = $this->stringValue($company['id_compania'] ?? '');
-            if ($companyId !== '') {
-                $companyIds[$companyId] = true;
-            }
-        }
         $companyById = [];
         foreach ($companyRows as $company) {
             $id = $this->stringValue($company['id_compania'] ?? '');
