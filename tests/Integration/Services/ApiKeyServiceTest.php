@@ -51,7 +51,7 @@ class FakeApiKeyRepository implements ApiKeyRepositoryInterface
         return $this->validationErrors;
     }
 
-    public function findAll(int $limit = 0, int $offset = 0): array
+    public function findAll(?int $limit = null, int $offset = 0): array
     {
         return [];
     }
