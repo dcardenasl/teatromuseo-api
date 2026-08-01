@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deleting, and broadcast cache invalidation to those domains after a successful delete/replace.
 - **`LegacyApplyService`** — `sn_compania.director_compania` now maps into `compania_ficha.director`
   during migration instead of being dropped silently.
+- **`LegacyApplyService::applyHomeSliderSlides()`** — migrates the 5 visible `sn_slider`
+  ("Index" category) legacy home banners into the home page's existing `hero_slider` block as
+  `slide_banner` children.
 
 ### Fixed
 
@@ -38,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LegacyApplyService::assetFile()`** — a single Hub-rejected upload (oversized file,
   unsupported mime type) aborted the entire `legacy:apply` slice instead of being recorded as an
   issue and letting the rest of the run continue.
+- **`LegacyApplyService::applyNoticias()`** — filled a manual, redundant `rich_text` block with
+  the article body while leaving the `noticias` template's required, auto-created primary
+  `rich_text` block empty in every language.
 - **`PermissionUpdateRequestDTO`, `RoleUpdateRequestDTO`, `UserUpdateRequestDTO`** — update
   requests can now explicitly clear a nullable field to `null` instead of silently dropping it
   (the DTOs previously used `array_filter($v !== null)`, which made it impossible to clear a
