@@ -11,15 +11,6 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-022 — Preparación para la migración completa: asset-root + limpieza de datos.**
-  El `asset-root` local (`teatromuseo_webapp_php`) está incompleto para contenido subido
-  recientemente (ya golpeó esto 2 veces: slider del home, portada de Anímate). A escala completa
-  (miles de imágenes) esto generará muchos `asset_missing`. Antes de migrar en serio: (1) escribir
-  un script que recorra los paths de imagen de cada tabla objetivo, detecte cuáles faltan en el
-  snapshot local, y las descargue de `https://teatromuseo.cl` (requiere autorización explícita de
-  David — son potencialmente cientos de archivos). (2) Confirmar con David exclusión de basura ya
-  detectada: 2 filas en `sn_obra` con `titulo_obra` "Test"/"TEst". No se decide unilateralmente.
-
 - [ ] **LEGACY-MAP-023 — Migración completa Slice B: cursos y profesores.** Quitar los límites
   hardcodeados en `LegacyApplyService::applyCourses()` (`array_slice($courses, 0, 3)` y
   `count($teachers) >= 20`) — hoy solo 3 de 53 `sn_escuela` y 3 de 57 `sn_profesor` están
@@ -48,6 +39,19 @@
   trabajo técnico.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-022 — Preparación para la migración completa: asset-root + limpieza de datos
+  (2026-08-01):** Auditoría de los 11 campos de asset en las 11 tablas objetivo (`sn_obra`,
+  `sn_slider_cartelera`, `sn_escuela_img`, `sn_funcionarios`, `sn_editorial`, `sn_prensa`,
+  `sn_administracion`, `sn_noticias`, `sn_expo_img`, `sn_museo`, `sn_slider`): 2,869 paths
+  distintos, 2,269 ya presentes localmente, 600 faltantes. De esos, 583 alcanzables en
+  `teatromuseo.cl` (con autorización explícita de David, ~1.6 GB) y 17 con enlace roto ya en el
+  sitio legacy (nombres con "ñ" mal codificados, HTTP 507/508 — no es algo que se pueda
+  descargar). Descargados 553/583 (3 fallos puntuales, 27 con bytes UTF-8 inválidos en el path
+  del dump que impiden crear el archivo local — necesitan corrección manual de encoding antes de
+  poder resolverse, no crítico). Cobertura final: **2,834/2,869 (98.8%)**. Confirmado con David:
+  las 2 filas de `sn_obra` con `titulo_obra` "Test"/"TEst" se excluyen de la migración completa
+  (a implementar en LEGACY-MAP-024).
 
 - **LEGACY-MAP-020 — Parchear bug de `ci4-api-core`: update solo-translations rechazado
   (2026-08-01):** Fix en la fuente del paquete (`fix(services): don't reject update() when
