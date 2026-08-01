@@ -746,6 +746,31 @@ final class LegacyApplyService
     }
 
     /**
+     * Walks every page of a paginated listing endpoint and concatenates the
+     * results, instead of trusting a single request (with a generous
+     * per_page) to return everything — see findCmsEntry() for why that
+     * assumption doesn't hold once a collection grows past whatever
+     * server-side page-size ceiling the target domain enforces.
+     *
+     * @param array<string, mixed> $query
+     * @return list<array<string, mixed>>
+     */
+    private function listAllPages(string $path, array $query = []): array
+    {
+        $items = [];
+        $page = 1;
+        $lastPage = 1;
+        do {
+            $response = $this->cms->get($path, $query + ['per_page' => 100, 'page' => $page]);
+            $items = array_merge($items, $this->list($response));
+            $lastPage = max(1, (int) ($response['meta']['last_page'] ?? 1));
+            $page++;
+        } while ($page <= $lastPage);
+
+        return $items;
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $items
      * @param list<string> $keys
      * @return array<string, int>
@@ -794,7 +819,13 @@ final class LegacyApplyService
     private function findCmsEntry(?int $collectionId, string $slug): ?int
     {
         if ($this->cmsEntries === null) {
-            $this->cmsEntries = $this->list($this->cms->get('/cms/entries', ['per_page' => 1000]));
+            // cms-domain silently clamps per_page to 100 regardless of what's requested here
+            // (EntryIndexRequestDTO allows up to 1000, but something downstream enforces a
+            // lower server-side max) — with 800+ real entries after the full migration, a
+            // single page missed most of them, so an entry created earlier in the same run
+            // (e.g. a festival) could look "not found" here even though it exists. Walk every
+            // page instead of trusting one request to return everything.
+            $this->cmsEntries = $this->listAllPages('/cms/entries');
         }
 
         foreach ($this->cmsEntries as $item) {
@@ -908,7 +939,11 @@ final class LegacyApplyService
 
     private function imageTable(string $ownerTable): string
     {
-        return $ownerTable === 'sn_obra' ? 'sn_slider_cartelera' : 'sn_escuela_img';
+        return match ($ownerTable) {
+            'sn_obra' => 'sn_slider_cartelera',
+            'sn_slider' => 'sn_slider', // festival galleries: own id space, not sn_escuela_img's.
+            default => 'sn_escuela_img',
+        };
     }
 
     /**
@@ -1073,40 +1108,46 @@ final class LegacyApplyService
         // 6. Museo
         $this->applyMuseo($tables, $runId);
 
-        // 7. Home page hero slides
-        $this->applyHomeSliderSlides($tables, $runId);
+        // 7. Page hero slides (sn_slider, categoria 1-3: Index/home, Quienes Somos, Historia)
+        $this->applySliderSlides($tables, $runId, 12, 1);
+        $this->applySliderSlides($tables, $runId, 17, 2);
+        $this->applySliderSlides($tables, $runId, 18, 3);
+
+        // 8. Festival galleries (sn_slider, categoria 4-5: Upa Chalupa, Anímate) — these two
+        // categories have no dedicated page; their images belong on the festival entry itself
+        // (LEGACY-MAP-026, confirmed by David), same gallery mechanism as obras/cursos.
+        $this->applyFestivalSliderGallery($tables, $runId, 'upa-chalupa-2019', 4);
+        $this->applyFestivalSliderGallery($tables, $runId, 'animate-2024', 5);
     }
 
     /**
      * sn_slider (499 rows, categoria 1-5 mapping to sn_categoria_slider: Index,
-     * Quienes Somos, Historia, Upa Chalupa, Anímate) only migrates categoria=1
-     * (home/"Index") here: the home page already ships a seeded `hero_slider`
-     * container to append `slide_banner` children to. nosotros/historia use
-     * hero_banner/cards_slider instead — they have no slider container — and
-     * Upa Chalupa/Anímate have no dedicated page at all yet. Adding a slider
-     * container to a page that doesn't have one, or standing up new pages for
-     * TeatroEscuela/Anímate, is a page-layout/IA decision, not a data
-     * transformation this command should make unilaterally.
+     * Quienes Somos, Historia, Upa Chalupa, Anímate). Categories 1-3 each have a
+     * real destination page with a seeded `hero_slider` container to append
+     * `slide_banner` children to (LEGACY-MAP-026: the nosotros/historia
+     * containers were added deliberately, once, outside this ETL, after David
+     * confirmed reusing the same hero_slider/slide_banner pattern as home —
+     * this method never creates the container itself). Categories 4-5 (Upa
+     * Chalupa, Anímate) are festivals, not pages — see
+     * applyFestivalSliderGallery().
      *
      * @param array<string, list<array<string, mixed>>> $tables
      */
-    private function applyHomeSliderSlides(array $tables, int $runId): void
+    private function applySliderSlides(array $tables, int $runId, int $pageId, int $categoria): void
     {
-        $homePageId = 12;
-
         $slides = array_values(array_filter(
             $tables['sn_slider'] ?? [],
-            static fn (array $row): bool => (int) ($row['display'] ?? 0) === 1 && (int) ($row['categoria'] ?? 0) === 1
+            static fn (array $row): bool => (int) ($row['display'] ?? 0) === 1 && (int) ($row['categoria'] ?? 0) === $categoria
         ));
         if ($slides === []) {
             return;
         }
 
         $slideBannerBlockId = $this->blockTypes['slide_banner'] ?? throw new \RuntimeException('CMS block type slide_banner is not configured.');
-        $heroSliderId = $this->findHeroSliderInstanceId($homePageId);
+        $heroSliderId = $this->findHeroSliderInstanceId($pageId);
         if ($heroSliderId === null) {
             $this->summary['issues']++;
-            $this->repository->recordIssue($this->currentRunId, 'sn_slider', 'hero_slider', 'target_missing', null, LegacyMigrationCatalog::TARGET_CMS, 'page_block', null, 'parent_block', null, null, 'Home page has no hero_slider container to attach slides to.', 'warning');
+            $this->repository->recordIssue($this->currentRunId, 'sn_slider', 'hero_slider:page:' . $pageId, 'target_missing', null, LegacyMigrationCatalog::TARGET_CMS, 'page_block', null, 'parent_block', null, null, "Page {$pageId} has no hero_slider container to attach slides to.", 'warning');
 
             return;
         }
@@ -1120,7 +1161,7 @@ final class LegacyApplyService
             }
 
             $sortOrder++;
-            $recoveredId = $this->findCmsBlock($homePageId, $slideBannerBlockId, $heroSliderId, $sortOrder, null, 'page');
+            $recoveredId = $this->findCmsBlock($pageId, $slideBannerBlockId, $heroSliderId, $sortOrder, null, 'page');
             if ($recoveredId !== null) {
                 $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic slide lookup');
                 $this->summary['reused']['blocks']++;
@@ -1146,10 +1187,10 @@ final class LegacyApplyService
                 ];
             }
             $blockConfig = ['image' => $fileId !== null ? ['source_kind' => 'file', 'file_id' => $fileId] : null];
-            $response = $this->cms->post('/cms/pages/' . $homePageId . '/blocks', [
+            $response = $this->cms->post('/cms/pages/' . $pageId . '/blocks', [
                 'block_id' => $slideBannerBlockId,
                 'owner_type' => 'page',
-                'owner_id' => $homePageId,
+                'owner_id' => $pageId,
                 'parent_instance_id' => $heroSliderId,
                 'sort_order' => $sortOrder,
                 'column_index' => null,
@@ -1158,10 +1199,52 @@ final class LegacyApplyService
                 'translations' => $translations,
             ]);
             $blockId = $this->extractId($response);
-            $this->rememberCmsBlock($blockId, $slideBannerBlockId, $homePageId, $heroSliderId, $sortOrder, $fileId, 'page');
-            $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'home hero slide');
+            $this->rememberCmsBlock($blockId, $slideBannerBlockId, $pageId, $heroSliderId, $sortOrder, $fileId, 'page');
+            $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'page hero slide');
             $this->summary['created']['blocks']++;
         }
+    }
+
+    /**
+     * Attaches a festival's sn_slider images (categoria 4/5 — Upa Chalupa,
+     * Anímate) to its already-migrated festivales entry as a plain gallery,
+     * the same mechanism used for obras/cursos — these two legacy categories
+     * were never real "pages", just banner rotations, so a photo gallery on
+     * the festival entry is the natural fit (LEGACY-MAP-026).
+     *
+     * @param array<string, list<array<string, mixed>>> $tables
+     */
+    private function applyFestivalSliderGallery(array $tables, int $runId, string $festivalSlug, int $categoria): void
+    {
+        $images = array_values(array_filter(
+            $tables['sn_slider'] ?? [],
+            static fn (array $row): bool => (int) ($row['display'] ?? 0) === 1 && (int) ($row['categoria'] ?? 0) === $categoria
+        ));
+        if ($images === []) {
+            return;
+        }
+
+        $entryId = $this->findCmsEntry($this->collections['festivales'] ?? null, $festivalSlug);
+        if ($entryId === null) {
+            $this->summary['issues']++;
+            $this->repository->recordIssue($this->currentRunId, 'sn_slider', 'festival:' . $festivalSlug, 'target_missing', null, LegacyMigrationCatalog::TARGET_CMS, 'gallery', null, 'parent_entry', null, null, "Festival entry '{$festivalSlug}' does not exist yet; run its slice first.", 'warning');
+
+            return;
+        }
+
+        // applyGallery() keys its images/alt/id fields by name, matching the
+        // sn_slider_cartelera shape it was written for — normalize sn_slider's
+        // own column names (archivo/id/texto) to that shape rather than
+        // widening applyGallery() itself for a one-off caller.
+        $normalized = array_map(
+            static fn (array $row): array => [
+                'gallery_img_url' => $row['archivo'] ?? '',
+                'gallery_img_id' => $row['id'] ?? '',
+                'gallery_img_alt' => $row['texto'] ?? '',
+            ],
+            $images
+        );
+        $this->applyGallery('sn_slider', 'festival:' . $festivalSlug, $entryId, $normalized, $runId, 'gallery_img_url', 'gallery_img_id', 'gallery_img_alt');
     }
 
     /**

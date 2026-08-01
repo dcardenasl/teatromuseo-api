@@ -11,14 +11,49 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-026 — Decisión de diseño: sliders de páginas no-home (`sn_slider`
-  categorías 2-5).** De 499 filas de `sn_slider`, solo las 5 de categoría 1 (home) están
-  migradas — las de "Quienes Somos"/"Historia"/"Upa Chalupa"/"Anímate" (categorías 2-5) no tienen
-  página/contenedor destino en la IA actual del sitio nuevo (mismo bloqueo ya documentado en
-  LEGACY-MAP-018 sección 11.6 del pilot mapping). Requiere decisión de David antes de ser
-  trabajo técnico.
+*(vacío)*
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-026 — Sliders no-home: Quienes Somos, Historia, Upa Chalupa, Anímate
+  (2026-08-01):** El conteo original ("494 de 499 filas de `sn_slider` sin migrar") estaba mal —
+  incluía basura histórica con `display=0`. Las filas **visibles** reales son solo 8: 3 en
+  categoría 2 (Quienes Somos), 2 en categoría 3 (Historia), 2 en categoría 4 (Upa Chalupa), 1 en
+  categoría 5 (Anímate). Decisiones de David:
+  1. **Quienes Somos / Historia**: agregar un `hero_slider` nuevo (mismo bloque que usa el home),
+     justo después del `page_header`, en vez de forzar el contenido en los bloques ya existentes
+     (`cards_slider` de testimonios reales, `asset_showcase` de logos institucionales, `image`
+     único con caption) — esos ya tienen contenido deliberado, no genérico, que no debía
+     tocarse. Contenedores `hero_slider` creados una sola vez, directo vía API contra cms-domain
+     (edición de estructura de página puntual, no parte del ETL versionado — mismo patrón que
+     LEGACY-MAP-020's fix de `cta_url`), reordenando los bloques existentes para dejarles espacio.
+  2. **Upa Chalupa / Anímate**: son festivales, no páginas — sus imágenes se agregan como galería
+     a las entradas de `festivales` ya migradas (`upa-chalupa-2019`, `animate-2024`), mismo
+     mecanismo que obras/cursos.
+  Código: `applyHomeSliderSlides()` generalizado a `applySliderSlides(tables, runId, pageId,
+  categoria)`, llamado para las 3 categorías de página; nuevo `applyFestivalSliderGallery()` para
+  las 2 categorías de festival. 2 bugs reales encontrados y corregidos en el camino:
+  1. **`imageTable()` mal namespacing `sn_slider`**: el helper que decide bajo qué tabla legacy
+     se registra un `gallery_item` en el control-plane solo conocía `sn_obra`→`sn_slider_cartelera`
+     y todo lo demás→`sn_escuela_img` — las imágenes de festival habrían quedado mal etiquetadas
+     y en riesgo de colisión de ID con `sn_escuela_img`. Agregado un caso explícito para
+     `sn_slider`.
+  2. **`findCmsEntry()` solo veía la primera página de `/cms/entries`**: cms-domain limita
+     `per_page` a 100 en el servidor sin importar lo pedido (`EntryIndexRequestDTO` permite hasta
+     1000, algo más abajo lo recorta) — con 877 entradas reales tras la migración completa, la
+     entrada de Anímate (más allá de la página 1) no se encontraba, generando un falso
+     `target_missing`. Nuevo `listAllPages()` que recorre todas las páginas usando
+     `meta.last_page`; `findCmsEntry()` ahora lo usa. Este bug pudo afectar en silencio la
+     detección de duplicados de cualquier slice anterior una vez pasadas las primeras 100
+     entradas — el chequeo primario de idempotencia (`legacy_migration_map`) nunca dependió de
+     esto, así que no generó duplicados reales, pero el mecanismo de recuperación secundario
+     (`findCmsEntry`) sí estaba roto para colecciones grandes.
+  3 tests nuevos (slides de página con exclusión correcta de categoría/visibilidad, degradación
+  correcta cuando falta la entrada de festival, paginación completa de `findCmsEntry`).
+  Ejecutado contra el dump real y cms-domain: 3 slides en Quienes Somos, 2 en Historia, galería
+  de 2 fotos en Upa Chalupa, galería de 1 foto en Anímate — verificado directo en
+  `cms_block_instances`. Idempotencia confirmada en corridas repetidas. `composer quality` ✅
+  (691/691 tests, 2 skips preexistentes).
 
 - **LEGACY-MAP-025 — Migración completa Slice C: noticias y publicaciones (2026-08-01):**
   Quitados `array_slice($newsRows, 0, 20)` en `applyNoticias()` y `$pubLimit = 30` en

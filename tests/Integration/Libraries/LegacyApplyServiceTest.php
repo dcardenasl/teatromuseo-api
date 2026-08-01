@@ -356,6 +356,60 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
 
         $this->assertSame(25 + 45, $summary['created']['cms_entries']); // 25 news + 45 publications (15+15+15)
     }
+
+    public function testAppliesPageSliderSlidesForNosotrosAndHistoria(): void
+    {
+        // LEGACY-MAP-026: categorias 2/3 (Quienes Somos, Historia) got their own hero_slider
+        // container added deliberately, once, outside this ETL — this proves applySliderSlides()
+        // (generalized from the home-only version) correctly targets those page IDs too.
+        $hash = hash('sha256', 'legacy-slider-pages-fixture');
+        $tables = [
+            'sn_slider' => [
+                ['id' => '901', 'archivo' => '/images/slider/nosotros-1.png', 'texto' => 'Museo', 'link' => '', 'display' => '1', 'categoria' => '2'],
+                ['id' => '902', 'archivo' => '/images/slider/nosotros-2.png', 'texto' => 'Museo', 'link' => '', 'display' => '1', 'categoria' => '2'],
+                ['id' => '903', 'archivo' => '/images/slider/historia-1.png', 'texto' => '', 'link' => '', 'display' => '1', 'categoria' => '3'],
+                // Different category and an invisible row must never leak into either page.
+                ['id' => '904', 'archivo' => '/images/slider/animate-1.png', 'texto' => '', 'link' => '', 'display' => '1', 'categoria' => '5'],
+                ['id' => '905', 'archivo' => '/images/slider/hidden.png', 'texto' => '', 'link' => '', 'display' => '0', 'categoria' => '2'],
+            ],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-slider-pages-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/slider-pages-fixture.sql', $hash);
+
+        $summary = $service->apply('C', $tables, '/tmp/slider-pages-fixture.sql', $runId);
+
+        $this->assertSame(3, $summary['created']['blocks']); // 2 nosotros slides + 1 historia slide
+        $pageBlockPayloads = $client->payloads('/cms/pages/17/blocks');
+        $this->assertCount(2, $pageBlockPayloads);
+        $historiaPayloads = $client->payloads('/cms/pages/18/blocks');
+        $this->assertCount(1, $historiaPayloads);
+    }
+
+    public function testFestivalGalleryTargetMissingRecordsIssueInsteadOfCrashing(): void
+    {
+        // The fake client's /cms/entries always returns no items (matching the dedup-check
+        // needs of every other test here), so findCmsEntry() can never "find" upa-chalupa-2019
+        // in this harness — this proves that a missing festival entry degrades to a recorded
+        // issue instead of an uncaught exception. The positive "gallery actually attaches" path
+        // is verified live against a real cms-domain run (LEGACY-MAP-026 apply).
+        $hash = hash('sha256', 'legacy-festival-gallery-fixture');
+        $tables = [
+            'sn_slider' => [
+                ['id' => '910', 'archivo' => '/images/slider/upa-1.png', 'texto' => '', 'link' => '', 'display' => '1', 'categoria' => '4'],
+            ],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-festival-gallery-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/festival-gallery-fixture.sql', $hash);
+
+        $summary = $service->apply('C', $tables, '/tmp/festival-gallery-fixture.sql', $runId);
+
+        $this->assertGreaterThanOrEqual(1, $summary['issues']);
+        $this->assertSame(0, $summary['created']['blocks']);
+    }
 }
 
 /**
@@ -373,6 +427,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     private int $nextOccurrenceId = 300;
     private int $nextReferenceId = 400;
     private int $nextSubmissionId = 500;
+    private int $nextBlockId = 600;
 
     /** @param array<string, mixed> $query */
     public function get(string $path, array $query = []): array
@@ -381,6 +436,15 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
             if ((int) ($query['per_page'] ?? 0) > 100) {
                 throw new \RuntimeException('Migration exceeded a public domain pagination contract.');
             }
+        }
+
+        // Simulates a page that already has a seeded hero_slider container (the real
+        // nosotros/historia containers were created once, deliberately, outside this ETL —
+        // see LEGACY-MAP-026) — every fixture page "has" one so applySliderSlides() can find it.
+        if (preg_match('#^/cms/pages/(\d+)/blocks$#', $path, $matches) === 1) {
+            return ['data' => ['items' => [
+                ['id' => 1000 + (int) $matches[1], 'block_id' => 13, 'parent_instance_id' => 0],
+            ]]];
         }
 
         return match ($path) {
@@ -399,6 +463,8 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 10, 'block_key' => 'gallery'],
                 ['id' => 11, 'block_key' => 'gallery_item'],
                 ['id' => 12, 'block_key' => 'document_download'],
+                ['id' => 13, 'block_key' => 'hero_slider'],
+                ['id' => 14, 'block_key' => 'slide_banner'],
             ]]],
             '/cms/entries' => ['data' => ['items' => []]],
             '/events/events' => ['data' => ['items' => []]],
@@ -412,6 +478,10 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     {
         $this->posts[$path] = ($this->posts[$path] ?? 0) + 1;
         $this->payloads[$path][] = $payload;
+
+        if (preg_match('#^/cms/(pages|entries)/\d+/blocks$#', $path) === 1) {
+            return ['data' => ['id' => $this->nextBlockId++]];
+        }
 
         return match ($path) {
             '/cms/entries' => ['data' => ['id' => $this->nextCmsId++]],
