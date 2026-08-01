@@ -125,6 +125,34 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         );
     }
 
+    public function testSliceBMigratesMoreThanThreeCoursesAndMoreThanTwentyTeachers(): void
+    {
+        $hash = hash('sha256', 'legacy-course-scale-fixture');
+        $courses = [];
+        $teachers = [];
+        // IDs offset into the 900s so they can never collide with legacy_migration_map rows
+        // left behind by other tests in this file (e.g. profesor_id='8', curso_id='25') — that
+        // table isn't rolled back between tests here.
+        for ($i = 1; $i <= 5; $i++) {
+            $courses[] = ['curso_id' => (string) (900 + $i), 'curso_titulo' => 'Curso ' . $i, 'curso_descripcion' => 'Desc'];
+        }
+        for ($i = 1; $i <= 25; $i++) {
+            // Spread teachers across the 5 courses so all 25 are eligible — LEGACY-MAP-023
+            // removed both the 3-course and 20-teacher caps for the full migration.
+            $teachers[] = ['profesor_id' => (string) (900 + $i), 'profesor_nombre' => 'Docente ' . $i, 'profesor_curso' => (string) (900 + ($i % 5) + 1)];
+        }
+        $tables = ['sn_escuela' => $courses, 'sn_profesor' => $teachers, 'sn_cursos' => [], 'sn_escuela_img' => [], 'sn_categoria_escuela' => []];
+
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-course-scale-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-scale-fixture.sql', $hash);
+
+        $summary = $service->apply('B', $tables, '/tmp/course-scale-fixture.sql', $runId);
+
+        $this->assertSame(30, $summary['created']['cms_entries']); // 5 courses + 25 teachers
+    }
+
     public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void
     {
         $hash = hash('sha256', 'legacy-contact-fixture');

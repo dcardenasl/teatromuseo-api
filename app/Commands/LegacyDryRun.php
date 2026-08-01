@@ -127,7 +127,7 @@ final class LegacyDryRun extends BaseCommand
     private function analyzeSlice(string $slice, array $tables, string $dumpPath, string $sourceHash, ?LegacyAssetResolver $assetResolver): array
     {
         if ($slice === 'B') {
-            return (new \App\Libraries\LegacyMigration\LegacySliceBAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
+            return (new \App\Libraries\LegacyMigration\LegacySliceBAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash, PHP_INT_MAX, PHP_INT_MAX);
         }
         if ($slice === 'C') {
             return (new \App\Libraries\LegacyMigration\LegacySliceCAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);

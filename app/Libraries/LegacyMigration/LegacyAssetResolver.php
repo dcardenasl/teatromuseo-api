@@ -44,8 +44,17 @@ final class LegacyAssetResolver
             return $this->invalid($sourcePath, 'empty_path');
         }
 
-        $path = parse_url($sourcePath, PHP_URL_PATH);
-        $path = is_string($path) ? $path : $sourcePath;
+        // parse_url() is byte-oriented, not UTF-8-aware: on some legacy paths it strips or
+        // corrupts a UTF-8 continuation byte that happens to match an ASCII control character
+        // it treats specially (e.g. 0xAD, the second byte of "í"'s 2-byte encoding, gets turned
+        // into "_"). Only route through it when the string actually looks like a full URL
+        // (has a scheme) — legacy paths are already bare filesystem paths and don't need it.
+        if (str_contains($sourcePath, '://')) {
+            $parsed = parse_url($sourcePath, PHP_URL_PATH);
+            $path = is_string($parsed) ? $parsed : $sourcePath;
+        } else {
+            $path = $sourcePath;
+        }
         $path = str_replace('\\', '/', $path);
         $relativePath = ltrim($path, '/');
         $segments = explode('/', $relativePath);

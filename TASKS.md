@@ -11,13 +11,6 @@
 
 ## 🟡 Próximo
 
-- [ ] **LEGACY-MAP-023 — Migración completa Slice B: cursos y profesores.** Quitar los límites
-  hardcodeados en `LegacyApplyService::applyCourses()` (`array_slice($courses, 0, 3)` y
-  `count($teachers) >= 20`) — hoy solo 3 de 53 `sn_escuela` y 3 de 57 `sn_profesor` están
-  migrados. Directamente relevante: es lo que ahora representa "Cursos" para la decisión de
-  TeatroEscuela (LEGACY-MAP-018). Candidata a ir primero — tamaño manejable, sin bloqueos de
-  diseño pendientes.
-
 - [ ] **LEGACY-MAP-024 — Migración completa Slice A: obras, compañías, galería y videos.** Quitar
   `array_slice($workRows, 0, 10)`, el cap `count($referencedCompanyIds) < 3`, y
   `array_slice($videoGroups, 0, 5, true)` en `applyWorks()`. Hoy: 11 de 759 `sn_obra`, 3 de 235
@@ -39,6 +32,21 @@
   trabajo técnico.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-023 — Migración completa Slice B: cursos y profesores (2026-08-01):** Quitados
+  los límites hardcodeados en `LegacyApplyService::applyCourses()` (`array_slice($courses, 0, 3)`
+  y `count($teachers) >= 20`), y los defaults del analyzer para el dry-run (`LegacyDryRun.php`
+  ahora pasa `PHP_INT_MAX` a `LegacySliceBAnalyzer::analyze()`). En el camino: encontrado y
+  corregido un bug real en `LegacyAssetResolver::resolve()` — usaba `parse_url()` sobre paths que
+  ya eran rutas de archivo (no URLs), y `parse_url()` es byte-oriented, no UTF-8-aware: corrompía
+  el segundo byte de la codificación UTF-8 de "í" (0xAD → "_"), lo que después tumbaba
+  `json_encode(..., JSON_THROW_ON_ERROR)` del reporte de dry-run con "Malformed UTF-8". Ahora
+  solo pasa por `parse_url()` cuando el string realmente tiene esquema (`://`). 1 test nuevo de
+  regresión. Ejecutado contra el dump real y cms-domain: **103 entradas** (48 cursos + 55
+  profesores, filtrados por `display`, de 53/57 totales), 77 items de galería, 60 archivos
+  subidos, idempotencia confirmada (segunda corrida: 0 creadas, 103 reusadas). Verificado en
+  `cms_entries`: colección `cursos` en 50 filas, `personas` en 67. `composer quality` ✅
+  (684/684 tests, 2 skips preexistentes).
 
 - **LEGACY-MAP-022 — Preparación para la migración completa: asset-root + limpieza de datos
   (2026-08-01):** Auditoría de los 11 campos de asset en las 11 tablas objetivo (`sn_obra`,

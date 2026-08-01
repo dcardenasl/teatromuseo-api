@@ -46,4 +46,17 @@ final class LegacyAssetResolverTest extends TestCase
         $this->assertSame('missing', $resolver->resolve('/images/not-found.jpg')['status']);
         $this->assertSame('invalid', $resolver->resolve('/../outside.txt')['status']);
     }
+
+    public function testPreservesUtf8BytesThatParseUrlWouldCorrupt(): void
+    {
+        // parse_url() is byte-oriented: on some inputs it silently turns the second byte of
+        // "í"'s 2-byte UTF-8 encoding (0xAD) into "_", corrupting the path into invalid UTF-8
+        // and later crashing json_encode(..., JSON_THROW_ON_ERROR) in the dry-run report writer.
+        $legacyPath = '/images/escuela/profes-títeres-1-663cf9a6d4bb2.png';
+
+        $result = (new LegacyAssetResolver($this->rootPath))->resolve($legacyPath);
+
+        $this->assertSame($legacyPath, $result['source_path']);
+        $this->assertTrue(mb_check_encoding($result['source_path'], 'UTF-8'));
+    }
 }

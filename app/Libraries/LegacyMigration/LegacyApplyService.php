@@ -235,7 +235,6 @@ final class LegacyApplyService
     {
         $courses = $this->visibleRows($tables['sn_escuela'] ?? [], 'curso_display');
         usort($courses, fn (array $left, array $right): int => $this->numericId($left, 'curso_id') <=> $this->numericId($right, 'curso_id'));
-        $courses = array_slice($courses, 0, 3);
         $supplements = [];
         foreach ($tables['sn_cursos'] ?? [] as $supplement) {
             $id = $this->stringValue($supplement['id'] ?? '');
@@ -260,7 +259,7 @@ final class LegacyApplyService
         $teacherRows = $this->visibleRows($tables['sn_profesor'] ?? [], 'profesor_display');
         usort($teacherRows, fn (array $left, array $right): int => $this->numericId($left, 'profesor_id') <=> $this->numericId($right, 'profesor_id'));
         foreach ($teacherRows as $teacher) {
-            if (! isset($selectedCourseIds[$this->stringValue($teacher['profesor_curso'] ?? '')]) || count($teachers) >= 20) {
+            if (! isset($selectedCourseIds[$this->stringValue($teacher['profesor_curso'] ?? '')])) {
                 continue;
             }
             $teacherId = $this->stringValue($teacher['profesor_id'] ?? '');
