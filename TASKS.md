@@ -11,6 +11,14 @@
 
 ## 🟡 Próximo
 
+- [ ] **LEGACY-MAP-020 — Reportar/parchear bug de `ci4-api-core`: update solo-translations rechazado.**
+  `HasDeferredTranslations::deferTranslationsFromUpdate()` extrae `translations` de `$data`
+  antes de que `BaseCrudService::update()` (paquete vendored `dcardenasl/ci4-api-core`) revise
+  `empty($data)` — un update que sólo cambia traducciones (sin tocar otro campo) siempre
+  devuelve 400. Afecta a Entry/Menu/MenuItem/Page/BlockInstance/Collection/Setting. Vive en un
+  paquete Composer externo, no en este repo — requiere fix en la fuente de `ci4-api-core`.
+  Encontrado 2026-08-01 corrigiendo `cta_url` de las slides del home slider (ver
+  `../docs/legacy-cms-pilot-mapping.md` sección 12.3).
 - [ ] **LEGACY-MAP-017 — Decisión pendiente: migrar `sn_contact_message` (157 filas de PII).** No
   se ejecuta sin confirmación explícita de David sobre retención/privacidad de datos de
   visitantes reales. Target técnico ya existe (`cms_form_submissions` en cms-domain).
@@ -19,6 +27,22 @@
   sitio nuevo; requiere decisión de diseño de página/navegación antes de poder migrarlas.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-021 — Limpiar el home hero slider: demo fuera, URLs internas, imágenes reales (2026-08-01):**
+  David probó el home real y encontró slides sin imagen y mezcladas con contenido de demo del
+  starter kit. Dos hallazgos y correcciones: (1) mi reporte anterior decía "2 de 5 imágenes
+  faltantes" — error de conteo, eran **las 5**; corregido descargando las 5 desde
+  `https://teatromuseo.cl` (con autorización explícita) y subiéndolas al hub. (2) Las 3 slides
+  de demo del starter (`picsum.photos`, "Bienvenidos a TeatroMuseo" etc.) se eliminaron; las 5
+  reales tenían `cta_url` apuntando al dominio legacy (`https://teatromuseo.cl/...`) — nuevo
+  `LegacyApplyService::mapLegacySliderLink()` traduce cada path legacy a su ruta interna real
+  en `teatromuseo-web` (`cartelera→/cartelera`, `teatroescuela→/cursos`, etc., fallback a
+  `/contacto` para paths sin equivalente claro, nunca deja una URL externa). Datos ya migrados
+  corregidos a mano con el mismo mapeo. Encontrado de paso un bug real en el paquete vendored
+  `ci4-api-core` (ver LEGACY-MAP-020) al intentar el update. Verificado visualmente en el sitio
+  público tras invalidar caché (`POST /cache/invalidate`) — 5 slides, imágenes reales, enlaces
+  internos correctos. Detalle completo en `../docs/legacy-cms-pilot-mapping.md` sección 12.
+  `composer quality` ✅ (676 tests, 2 skips preexistentes no relacionados).
 
 - **LEGACY-MAP-019 — Cerrar la lista de pendientes de la migración final (2026-08-01):**
   Pasada completa sobre los pendientes documentados en `../docs/legacy-cms-pilot-mapping.md`
