@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LegacyApplyService::mapLegacySliderLink()`** — translates legacy `teatromuseo.cl` absolute
   URLs in `sn_slider.link` into internal `teatromuseo-web` paths (`/cartelera`, `/cursos`,
   etc.) instead of pointing the new site's own home banner at the old production domain.
+- **`legacy:dry-run` / `legacy:apply` slice C** — now also migrates the Anímate festival
+  (`sn_obra` where `url=animate`) into the `festivales` collection as its own entry, alongside
+  the existing `sn_upa` festivals.
 
 ### Fixed
 
