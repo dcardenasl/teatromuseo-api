@@ -11,12 +11,18 @@
 
 ## 🟡 Próximo
 
-- **DEPS-001 — Revisar paquetes dev abandonados (`composer audit`):** `sebastian/code-unit` y
-  `sebastian/code-unit-reverse-lookup` (transitivos de PHPUnit) aparecen marcados como
-  "abandoned" sin reemplazo sugerido por Packagist. Sin CVE asociado — no es urgente, pero
-  conviene revisar si una actualización de PHPUnit los elimina de la dependency tree, o si hay
-  que vivir con ellos indefinidamente. Detectado 2026-07-31 vía `composer audit` durante una
-  auditoría de seguridad transversal del monorepo.
+*(vacío)*
+
+## ✅ Completadas
+
+- **DEPS-001 — Falso positivo de "abandoned" para sebastian/code-unit (2026-07-31):** `composer
+  audit` marcaba `sebastian/code-unit`/`sebastian/code-unit-reverse-lookup` (transitivos de
+  PHPUnit) como abandonados. Verificado contra Packagist en vivo: **no** están abandonados — el
+  flag venía de metadata obsoleta congelada en `composer.lock` desde la última vez que se
+  regeneró. `composer update sebastian/code-unit sebastian/code-unit-reverse-lookup` refrescó la
+  metadata sin cambiar versiones (3.0.3/4.0.1 en ambos casos) y limpió el aviso. Revisado también
+  en los otros 7 repos del monorepo: ninguno tenía el flag activo (sus locks nunca capturaron el
+  estado obsoleto), así que no hizo falta tocarlos.
 
 ## ✅ Completadas
 
