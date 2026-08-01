@@ -1073,6 +1073,113 @@ final class LegacyApplyService
 
         // 6. Museo
         $this->applyMuseo($tables, $runId);
+
+        // 7. Home page hero slides
+        $this->applyHomeSliderSlides($tables, $runId);
+    }
+
+    /**
+     * sn_slider (499 rows, categoria 1-5 mapping to sn_categoria_slider: Index,
+     * Quienes Somos, Historia, Upa Chalupa, Anímate) only migrates categoria=1
+     * (home/"Index") here: the home page already ships a seeded `hero_slider`
+     * container to append `slide_banner` children to. nosotros/historia use
+     * hero_banner/cards_slider instead — they have no slider container — and
+     * Upa Chalupa/Anímate have no dedicated page at all yet. Adding a slider
+     * container to a page that doesn't have one, or standing up new pages for
+     * TeatroEscuela/Anímate, is a page-layout/IA decision, not a data
+     * transformation this command should make unilaterally.
+     *
+     * @param array<string, list<array<string, mixed>>> $tables
+     */
+    private function applyHomeSliderSlides(array $tables, int $runId): void
+    {
+        $homePageId = 12;
+
+        $slides = array_values(array_filter(
+            $tables['sn_slider'] ?? [],
+            static fn (array $row): bool => (int) ($row['display'] ?? 0) === 1 && (int) ($row['categoria'] ?? 0) === 1
+        ));
+        if ($slides === []) {
+            return;
+        }
+
+        $slideBannerBlockId = $this->blockTypes['slide_banner'] ?? throw new \RuntimeException('CMS block type slide_banner is not configured.');
+        $heroSliderId = $this->findHeroSliderInstanceId($homePageId);
+        if ($heroSliderId === null) {
+            $this->summary['issues']++;
+            $this->repository->recordIssue($this->currentRunId, 'sn_slider', 'hero_slider', 'target_missing', null, LegacyMigrationCatalog::TARGET_CMS, 'page_block', null, 'parent_block', null, null, 'Home page has no hero_slider container to attach slides to.', 'warning');
+
+            return;
+        }
+
+        $sortOrder = 100;
+        foreach ($slides as $slide) {
+            $id = $this->stringValue($slide['id'] ?? '');
+            if ($id === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+
+            $sortOrder++;
+            $recoveredId = $this->findCmsBlock($homePageId, $slideBannerBlockId, $heroSliderId, $sortOrder, null, 'page');
+            if ($recoveredId !== null) {
+                $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $recoveredId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic slide lookup');
+                $this->summary['reused']['blocks']++;
+                continue;
+            }
+
+            $imagePath = $this->stringValue($slide['archivo'] ?? '');
+            $fileId = $imagePath !== '' ? $this->assetFile('sn_slider', $id, $imagePath, 'slide-' . $id, $runId) : null;
+            $heading = $this->stringValue($slide['texto'] ?? '');
+            $link = $this->stringValue($slide['link'] ?? '');
+
+            $translations = [];
+            foreach ($this->languages as $code => $langId) {
+                $translations[] = [
+                    'language_id' => $langId,
+                    'block_data' => [
+                        'heading' => $heading !== '' ? $heading : 'Teatromuseo',
+                        'subtitle' => null,
+                        'cta_url' => $link !== '' ? $link : null,
+                        'cta_label' => $link !== '' ? 'Ver más' : null,
+                    ],
+                    'is_published' => true,
+                ];
+            }
+            $blockConfig = ['image' => $fileId !== null ? ['source_kind' => 'file', 'file_id' => $fileId] : null];
+            $response = $this->cms->post('/cms/pages/' . $homePageId . '/blocks', [
+                'block_id' => $slideBannerBlockId,
+                'owner_type' => 'page',
+                'owner_id' => $homePageId,
+                'parent_instance_id' => $heroSliderId,
+                'sort_order' => $sortOrder,
+                'column_index' => null,
+                'is_active' => true,
+                'block_config' => $blockConfig,
+                'translations' => $translations,
+            ]);
+            $blockId = $this->extractId($response);
+            $this->rememberCmsBlock($blockId, $slideBannerBlockId, $homePageId, $heroSliderId, $sortOrder, $fileId, 'page');
+            $this->map($runId, 'sn_slider', $id, LegacyMigrationCatalog::TARGET_CMS, 'page_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'home hero slide');
+            $this->summary['created']['blocks']++;
+        }
+    }
+
+    private function findHeroSliderInstanceId(int $pageId): ?int
+    {
+        $heroSliderBlockId = $this->blockTypes['hero_slider'] ?? null;
+        if ($heroSliderBlockId === null) {
+            return null;
+        }
+
+        $blocks = $this->list($this->cms->get('/cms/pages/' . $pageId . '/blocks', ['per_page' => 200]));
+        foreach ($blocks as $block) {
+            if ((int) ($block['block_id'] ?? 0) === $heroSliderBlockId && (int) ($block['parent_instance_id'] ?? -1) === 0) {
+                return (int) ($block['id'] ?? 0);
+            }
+        }
+
+        return null;
     }
 
     /** @param array<string, list<array<string, mixed>>> $tables */
