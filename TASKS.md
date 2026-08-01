@@ -15,6 +15,19 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-027 — Publicar el contenido migrado: draft/scheduled → published
+  (2026-08-01):** Toda la migración legacy (022-026) creaba contenido en estado no-público por
+  diseño (`workflow_status: draft` en `applyCmsEntry()`, `status: scheduled` en `applyEvent()`)
+  — correcto para no auto-publicar legacy sin curar, pero significaba que nada de lo migrado era
+  visible en el sitio. Confirmado con David: publicar todo sin revisión previa por colección.
+  Sin endpoint bulk disponible; script puntual (no versionado, fuera del ETL) que pagina
+  `/cms/entries` y `/events/events` (100 por página) y hace PUT individual por fila a
+  `workflow_status`/`status`. `cms_pages` no tiene gate de draft/publish (las páginas quedan
+  visibles apenas se crean) y las `occurrences` de event-domain no se tocaron — su `status`
+  describe si la función está programada/cancelada/realizada, no es un gate de visibilidad
+  pública (ese vive en `events.status`). Ejecutado: **877/877 `cms_entries` y 381/381 `events`
+  publicados, 0 fallos**, verificado directo en ambas bases de datos.
+
 - **LEGACY-MAP-026 — Sliders no-home: Quienes Somos, Historia, Upa Chalupa, Anímate
   (2026-08-01):** El conteo original ("494 de 499 filas de `sn_slider` sin migrar") estaba mal —
   incluía basura histórica con `display=0`. Las filas **visibles** reales son solo 8: 3 en
