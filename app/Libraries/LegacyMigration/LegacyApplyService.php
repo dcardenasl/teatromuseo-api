@@ -114,7 +114,12 @@ final class LegacyApplyService
                 $slug,
                 $this->stringValue($company['nombre_compania'] ?? 'Compañía'),
                 $this->stringValue($company['resena_compania'] ?? ''),
-                ['name' => $this->stringValue($company['nombre_compania'] ?? ''), 'summary' => $this->stringValue($company['resena_compania'] ?? ''), 'description' => $this->stringValue($company['resena_compania'] ?? '')],
+                [
+                    'name' => $this->stringValue($company['nombre_compania'] ?? ''),
+                    'summary' => $this->stringValue($company['resena_compania'] ?? ''),
+                    'description' => $this->stringValue($company['resena_compania'] ?? ''),
+                    'director' => $this->stringValue($company['director_compania'] ?? ''),
+                ],
                 $runId
             );
         }
