@@ -23,6 +23,12 @@ interface LegacyDomainClientInterface
     public function post(string $path, array $payload = []): array;
 
     /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function put(string $path, array $payload = []): array;
+
+    /**
      * @param array<string, mixed> $fields
      * @return array<string, mixed>
      */

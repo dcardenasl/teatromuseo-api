@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Integration\Libraries;
 
 use App\Libraries\LegacyMigration\LegacyApplyService;
+use App\Libraries\LegacyMigration\LegacyAssetResolver;
 use App\Libraries\LegacyMigration\LegacyDomainClientInterface;
 use App\Libraries\LegacyMigration\LegacyMigrationCatalog;
 use App\Libraries\LegacyMigration\LegacyMigrationRepository;
@@ -410,6 +411,101 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertGreaterThanOrEqual(1, $summary['issues']);
         $this->assertSame(0, $summary['created']['blocks']);
     }
+
+    public function testReconcilesFeaturedImageOnceAssetBecomesAvailableInALaterRun(): void
+    {
+        // Reproduces the real LEGACY-MAP-024 gap: an entry (and its paired event — the public
+        // Cartelera listing reads events.cover_file_id, not the CMS entry's featured_image) is
+        // created successfully while its cover upload fails (rate limit, transient error). A
+        // later run must retroactively attach the cover to both once the asset resolves,
+        // without duplicating either, and must not re-PUT once the cover is already correct.
+        $assetRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'teatromuseo-cover-fixture-' . bin2hex(random_bytes(8));
+        mkdir($assetRoot, 0755, true);
+        file_put_contents($assetRoot . '/obra-fixture.jpg', 'fixture image bytes');
+
+        try {
+            $hash = hash('sha256', 'legacy-cover-reconcile-fixture');
+            // legacy_migration_map isn't rolled back between tests in this file (see
+            // testWorksAndCompaniesScaleWithoutHardcodedCaps) — id_obra must be unique across
+            // the whole class, not just this test.
+            $tables = [
+                'sn_obra' => [
+                    [
+                        'id_obra' => '95001',
+                        'titulo_obra' => 'Obra Fixture',
+                        'url' => 'obra-fixture',
+                        'fecha_obra' => '2026-08-01',
+                        'hora_obra' => '20:00',
+                        'valor1_obra' => '$ 3.000',
+                        'valor2_obra' => '$ 2.500',
+                        'direccion_obra' => 'Teatromuseo',
+                        'id_publico' => '',
+                        'id_compania' => '',
+                        'foto_obra' => 'obra-fixture.jpg',
+                        'display' => '1',
+                    ],
+                ],
+            ];
+            $repository = new LegacyMigrationRepository($this->db);
+            $entryId = 100; // LegacyApplyRecordingClient mints CMS ids starting at 100.
+            $eventId = 200; // ...and event ids starting at 200.
+
+            // Run 1: no asset resolver configured — mirrors an upload that failed on the spot.
+            // The entry and its event are both created without a cover.
+            $firstClient = new LegacyApplyRecordingClient();
+            $firstService = new LegacyApplyService($repository, $firstClient, $firstClient, $firstClient, null, $hash);
+            $firstRun = $repository->createRun('legacy-cover-reconcile-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/cover-fixture.sql', $hash);
+            $first = $firstService->apply('A', $tables, '/tmp/cover-fixture.sql', $firstRun);
+            $repository->finishRun($firstRun, LegacyMigrationCatalog::RUN_COMPLETED, $first);
+
+            $this->assertSame(1, $first['created']['cms_entries']);
+            $this->assertSame(1, $first['created']['events']);
+            $this->assertNull($firstClient->payloads('/events/events')[0]['cover_file_id']);
+
+            // Run 2: the asset now resolves and the upload succeeds. The entry already exists
+            // (found via the control-plane map), so it must reach reconcileFeaturedImage()
+            // rather than the create path, and PUT the now-available cover.
+            $resolver = new LegacyAssetResolver($assetRoot);
+            $secondClient = new LegacyApplyRecordingClient();
+            $secondClient->allowUploads = true;
+            $secondClient->entryDetails[$entryId] = [
+                'id' => $entryId,
+                'translations' => [['language_id' => 1, 'slug' => 'obra-fixture', 'title' => 'Obra Fixture', 'featured_image' => ['file_id' => null]]],
+            ];
+            $secondService = new LegacyApplyService($repository, $secondClient, $secondClient, $secondClient, $resolver, $hash);
+            $secondRun = $repository->createRun('legacy-cover-reconcile-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/cover-fixture.sql', $hash);
+            $second = $secondService->apply('A', $tables, '/tmp/cover-fixture.sql', $secondRun);
+            $repository->finishRun($secondRun, LegacyMigrationCatalog::RUN_COMPLETED, $second);
+
+            $this->assertSame(0, $second['created']['cms_entries']);
+            $this->assertSame(1, $second['reused']['cms_entries']);
+            $putPayloads = $secondClient->payloads('/cms/entries/' . $entryId);
+            $this->assertCount(1, $putPayloads, 'expected exactly one PUT to attach the now-available cover');
+            $this->assertSame(900, $putPayloads[0]['translations'][0]['featured_image']['file_id']);
+
+            $eventPutPayloads = $secondClient->payloads('/events/events/' . $eventId);
+            $this->assertCount(1, $eventPutPayloads, 'expected exactly one PUT to attach the now-available event cover');
+            $this->assertSame(['cover_file_id' => 900], $eventPutPayloads[0]);
+
+            // Run 3: identical inputs again — the cover is already correct, so no further PUT.
+            $thirdClient = new LegacyApplyRecordingClient();
+            $thirdClient->allowUploads = true;
+            $thirdClient->entryDetails[$entryId] = [
+                'id' => $entryId,
+                'translations' => [['language_id' => 1, 'slug' => 'obra-fixture', 'title' => 'Obra Fixture', 'featured_image' => ['file_id' => 900]]],
+            ];
+            $thirdService = new LegacyApplyService($repository, $thirdClient, $thirdClient, $thirdClient, $resolver, $hash);
+            $thirdRun = $repository->createRun('legacy-cover-reconcile-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/cover-fixture.sql', $hash);
+            $third = $thirdService->apply('A', $tables, '/tmp/cover-fixture.sql', $thirdRun);
+            $repository->finishRun($thirdRun, LegacyMigrationCatalog::RUN_COMPLETED, $third);
+
+            $this->assertCount(0, $thirdClient->payloads('/cms/entries/' . $entryId), 'idempotent: cover already correct, no re-PUT expected');
+            $this->assertCount(0, $thirdClient->payloads('/events/events/' . $eventId), 'idempotent: event cover already correct, no re-PUT expected');
+        } finally {
+            @unlink($assetRoot . '/obra-fixture.jpg');
+            @rmdir($assetRoot);
+        }
+    }
 }
 
 /**
@@ -428,6 +524,11 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     private int $nextReferenceId = 400;
     private int $nextSubmissionId = 500;
     private int $nextBlockId = 600;
+    /** Tests can seed this to control what reconcileFeaturedImage() sees via GET /cms/entries/{id}. @var array<int, array<string, mixed>> */
+    public array $entryDetails = [];
+    /** Default upload() always throws (matches every existing test's "no assets" fixture) — flip this to simulate an asset upload succeeding on a later run. */
+    public bool $allowUploads = false;
+    private int $nextFileId = 900;
 
     /** @param array<string, mixed> $query */
     public function get(string $path, array $query = []): array
@@ -445,6 +546,15 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
             return ['data' => ['items' => [
                 ['id' => 1000 + (int) $matches[1], 'block_id' => 13, 'parent_instance_id' => 0],
             ]]];
+        }
+
+        if (preg_match('#^/cms/entries/(\d+)$#', $path, $matches) === 1) {
+            $id = (int) $matches[1];
+
+            return ['data' => $this->entryDetails[$id] ?? [
+                'id' => $id,
+                'translations' => [['language_id' => 1, 'slug' => 'x', 'title' => 'X', 'featured_image' => ['file_id' => null]]],
+            ]];
         }
 
         return match ($path) {
@@ -493,10 +603,31 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
         };
     }
 
+    /** @param array<string, mixed> $payload */
+    public function put(string $path, array $payload = []): array
+    {
+        $this->posts[$path] = ($this->posts[$path] ?? 0) + 1;
+        $this->payloads[$path][] = $payload;
+
+        if (preg_match('#^/cms/entries/(\d+)$#', $path, $matches) === 1) {
+            return ['data' => ['id' => (int) $matches[1]]];
+        }
+
+        if (preg_match('#^/events/events/(\d+)$#', $path, $matches) === 1) {
+            return ['data' => ['id' => (int) $matches[1]]];
+        }
+
+        throw new \RuntimeException("Unexpected migration PUT {$path}");
+    }
+
     /** @param array<string, mixed> $fields */
     public function upload(string $path, string $filePath, string $filename, array $fields = []): array
     {
-        throw new \RuntimeException('The fixture intentionally has no assets.');
+        if (! $this->allowUploads) {
+            throw new \RuntimeException('The fixture intentionally has no assets.');
+        }
+
+        return ['data' => ['id' => $this->nextFileId++]];
     }
 
     public function postCount(string $path): int

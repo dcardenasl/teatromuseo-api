@@ -138,6 +138,7 @@ final class LegacyApplyService
                 continue;
             }
             $companyId = $this->stringValue($canonical['id_compania'] ?? '');
+            $featuredFileId = $this->assetFile('sn_obra', $canonicalId, $canonical['foto_obra'] ?? null, 'obra-' . $canonicalId, $runId);
             $entryId = $this->applyCmsEntry(
                 'sn_obra',
                 $canonicalId,
@@ -158,7 +159,7 @@ final class LegacyApplyService
                     'company' => isset($companyTargets[$companyId]) ? ['entry_id' => $companyTargets[$companyId], 'collection_key' => 'companias'] : null,
                 ],
                 $runId,
-                $this->assetFile('sn_obra', $canonicalId, $canonical['foto_obra'] ?? null, 'obra-' . $canonicalId, $runId)
+                $featuredFileId
             );
 
             foreach (array_slice($group, 1) as $duplicate) {
@@ -168,7 +169,7 @@ final class LegacyApplyService
                 }
             }
 
-            $eventId = $this->applyEvent($canonical, $workKey, $entryId, $runId);
+            $eventId = $this->applyEvent($canonical, $workKey, $entryId, $runId, $featuredFileId);
             foreach (array_slice($group, 1) as $duplicate) {
                 $duplicateId = $this->stringValue($duplicate['id_obra'] ?? '');
                 if ($duplicateId !== '') {
@@ -375,7 +376,10 @@ final class LegacyApplyService
         $mapped = $this->repository->findMap($legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry');
         if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
             $this->summary['reused']['cms_entries']++;
-            return (int) $mapped['target_id'];
+            $entryId = (int) $mapped['target_id'];
+            $this->reconcileFeaturedImage($legacyTable, $legacyId, $entryId, $featuredFileId, $runId);
+
+            return $entryId;
         }
 
         $collectionId = $this->collections[$collectionKey] ?? throw new \RuntimeException("CMS collection '{$collectionKey}' is not configured.");
@@ -384,6 +388,8 @@ final class LegacyApplyService
         if ($existing !== null) {
             $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $existing, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic collection/slug lookup');
             $this->summary['reused']['cms_entries']++;
+            $this->reconcileFeaturedImage($legacyTable, $legacyId, $existing, $featuredFileId, $runId);
+
             return $existing;
         }
 
@@ -394,6 +400,8 @@ final class LegacyApplyService
             if ($existingNew !== null) {
                 $this->map($runId, $legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $existingNew, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic collection/slug lookup after resolution');
                 $this->summary['reused']['cms_entries']++;
+                $this->reconcileFeaturedImage($legacyTable, $legacyId, $existingNew, $featuredFileId, $runId);
+
                 return $existingNew;
             }
         }
@@ -446,8 +454,64 @@ final class LegacyApplyService
         return $id;
     }
 
+    /**
+     * Attaches a cover image to an entry that already existed when this run
+     * reached it (any of applyCmsEntry()'s three early-return/reuse paths).
+     *
+     * Why this exists: applyCmsEntry() only ever puts `featured_image` in the
+     * *create* payload. On a slice with heavy asset traffic (e.g. hundreds of
+     * obras), a prior run can create the entry successfully while its cover
+     * upload fails (rate limit, transient error) — assetFile() returns null,
+     * the entry is created without a cover, and on every subsequent run the
+     * entry is "already mapped" and returns immediately, so a *now-resolved*
+     * file_id was never retroactively attached. Confirmed in production data
+     * after LEGACY-MAP-024: 366 sn_obra files uploaded successfully, but only
+     * 100 of 369 entries actually had a cover — the other ~266 covers were
+     * uploaded on a later run than the entry itself. Idempotent via its own
+     * ':cover' map key, so a re-run doesn't re-PUT an entry that's already
+     * correct.
+     */
+    private function reconcileFeaturedImage(string $legacyTable, string $legacyId, int $entryId, ?int $featuredFileId, int $runId): void
+    {
+        if ($featuredFileId === null) {
+            return;
+        }
+
+        $coverMap = $this->repository->findMap($legacyTable, $legacyId . ':cover', LegacyMigrationCatalog::TARGET_CMS, 'featured_image');
+        if ($coverMap !== null && $this->positiveId($coverMap['target_id'] ?? null) === $featuredFileId) {
+            return;
+        }
+
+        $current = $this->cms->get('/cms/entries/' . $entryId);
+        $entryData = $current['data'] ?? $current;
+        $translations = is_array($entryData['translations'] ?? null) ? $entryData['translations'] : [];
+        if ($translations === []) {
+            return;
+        }
+
+        $alreadyCorrect = true;
+        $patched = [];
+        foreach ($translations as $translation) {
+            if (! is_array($translation)) {
+                continue;
+            }
+            $existingFileId = $this->positiveId($translation['featured_image']['file_id'] ?? null);
+            if ($existingFileId !== $featuredFileId) {
+                $alreadyCorrect = false;
+            }
+            $translation['featured_image'] = ['source_kind' => 'file', 'file_id' => $featuredFileId];
+            $patched[] = $translation;
+        }
+
+        if (! $alreadyCorrect) {
+            $this->cms->put('/cms/entries/' . $entryId, ['translations' => $patched]);
+            $this->summary['created']['files']++;
+        }
+        $this->map($runId, $legacyTable, $legacyId . ':cover', LegacyMigrationCatalog::TARGET_CMS, 'featured_image', (string) $featuredFileId, LegacyMigrationCatalog::MAP_MAPPED, 'cover reconciled after asset became available');
+    }
+
     /** @param array<string, mixed> $work */
-    private function applyEvent(array $work, string $workKey, int $entryId, int $runId): int
+    private function applyEvent(array $work, string $workKey, int $entryId, int $runId, ?int $featuredFileId = null): int
     {
         $legacyId = $this->stringValue($work['id_obra'] ?? '');
         $mapped = $this->repository->findMap('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event');
@@ -455,6 +519,8 @@ final class LegacyApplyService
             $eventId = (int) $mapped['target_id'];
             $this->summary['reused']['events']++;
             $this->ensureEventReference($eventId, $entryId, $legacyId, $this->currentRunId);
+            $this->reconcileEventCover($legacyId, $eventId, $featuredFileId, $runId);
+
             return $eventId;
         }
 
@@ -464,6 +530,8 @@ final class LegacyApplyService
             $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', (string) $existing, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic UUID lookup');
             $this->summary['reused']['events']++;
             $this->ensureEventReference($existing, $entryId, $legacyId, $runId);
+            $this->reconcileEventCover($legacyId, $existing, $featuredFileId, $runId);
+
             return $existing;
         }
 
@@ -483,6 +551,7 @@ final class LegacyApplyService
             'capacity' => null,
             'available_spots' => null,
             'status' => 'scheduled',
+            'cover_file_id' => $featuredFileId,
         ]);
         $id = $this->extractId($response);
         $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', (string) $id, LegacyMigrationCatalog::MAP_MAPPED, 'created through event-domain API');
@@ -490,6 +559,29 @@ final class LegacyApplyService
         $this->summary['created']['events']++;
 
         return $id;
+    }
+
+    /**
+     * Mirrors reconcileFeaturedImage() for the event-domain side of the same gap: the public
+     * Cartelera listing reads events.cover_file_id directly (not the CMS entry's
+     * featured_image), and applyEvent()'s create path is the only place that ever set it —
+     * so an event reused on a later run (once its cover asset finally resolves) never got a
+     * cover either. cover_file_id has no per-language structure, so unlike
+     * reconcileFeaturedImage() this can PUT the single field directly without a prior GET.
+     */
+    private function reconcileEventCover(string $legacyId, int $eventId, ?int $featuredFileId, int $runId): void
+    {
+        if ($featuredFileId === null) {
+            return;
+        }
+
+        $coverMap = $this->repository->findMap('sn_obra', $legacyId . ':event-cover', LegacyMigrationCatalog::TARGET_EVENT, 'cover');
+        if ($coverMap !== null && $this->positiveId($coverMap['target_id'] ?? null) === $featuredFileId) {
+            return;
+        }
+
+        $this->event->put('/events/events/' . $eventId, ['cover_file_id' => $featuredFileId]);
+        $this->map($runId, 'sn_obra', $legacyId . ':event-cover', LegacyMigrationCatalog::TARGET_EVENT, 'cover', (string) $featuredFileId, LegacyMigrationCatalog::MAP_MAPPED, 'event cover reconciled after asset became available');
     }
 
     private function ensureEventReference(int $eventId, int $entryId, string $legacyId, int $runId): void

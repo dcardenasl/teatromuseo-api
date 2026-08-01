@@ -15,6 +15,51 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-028 — Portadas faltantes en obras/eventos: bug de reconciliación tras
+  upload fallido (2026-08-01):** David preguntó si las imágenes de la Cartelera (portadas,
+  galerías) estaban funcionando tras la publicación de LEGACY-MAP-027. Auditoría directa en BD
+  reveló que solo 100/369 `obras` tenían `featured_file_id` pese a que 366/369 de sus archivos
+  ya estaban subidos y mapeados en `legacy_migration_map` (confirmado: los 638 `sn_obra`
+  visibles tienen `foto_obra` no vacío — no es un gap de datos legacy). Causa raíz en
+  `applyCmsEntry()`: sus tres ramas de "la entrada ya existe, reusar" (via `findMap()`, via
+  slug+colección, via colisión de slug global) nunca intentaban adjuntar un `$featuredFileId`
+  recién resuelto — solo la ruta de creación lo hacía. Si el upload de portada fallaba en una
+  corrida (rate limit de LEGACY-MAP-024) pero la entrada ya se había creado, una corrida
+  posterior con el archivo ya disponible encontraba la entrada vía el early-return y descartaba
+  el `featuredFileId` en silencio. Fix: nuevo método `reconcileFeaturedImage()` (GET entrada →
+  PUT solo si el `file_id` actual difiere → registra mapa `:cover` para idempotencia) invocado
+  desde las tres ramas de reuso. Requirió agregar `put()` a `LegacyDomainClientInterface` +
+  `LegacyHttpDomainClient` (hereda el backoff-on-429 existente) + los 2 fakes de test.
+
+  **Segundo hallazgo, mismo día — verificación en navegador reveló que el fix de arriba no
+  bastaba:** la Cartelera pública lee `events.cover_file_id` (event-domain), no el
+  `featured_image` de la entrada CMS — campos completamente independientes.
+  `applyEvent()` nunca seteaba `cover_file_id` en ningún run (0/381 eventos con portada,
+  confirmado vía API pública). Mismo patrón de fix: `cover_file_id` ahora viaja en el POST de
+  creación, y un nuevo `reconcileEventCover()` (PUT directo, sin GET previo — a diferencia de
+  las entradas CMS, `cover_file_id` no tiene estructura por idioma que preservar) cubre las dos
+  ramas de reuso de `applyEvent()`, con su propio mapa `:event-cover` para idempotencia.
+
+  **Resultados reales (`legacy:apply --slice A/B/C --confirm` contra cms-domain/event-domain
+  productivos, no dry-run):** obras 100→365/369 portadas (+265, vía 70 uploads nuevos + ~195
+  reconciliaciones de archivos ya subidos), personas 6→10/67 (+4), publicaciones 5→15/47 (+10),
+  eventos 0→366/381 (+366). Sin duplicados (`created.cms_entries`/`created.events` en 0 en la
+  corrida de reconciliación). Cursos (0/50), compañías (0/214) y videos (0/46) quedan sin
+  cambios — confirmado que no es el mismo bug: sus assets fuente están genuinamente ausentes o
+  no resueltos (`asset_missing`/`file_not_found`), un gap de datos preexistente y separado, no
+  el bug de reconciliación. Idempotencia verificada con una segunda corrida real (0 archivos
+  creados, 0 PUTs nuevos). Verificado visualmente en `http://localhost:8184/cartelera` —
+  imágenes reales cargando desde el hub (200 OK, `image/jpeg`).
+
+  **Pendiente, fuera de alcance de este fix:** `events.gallery_file_ids` tiene el mismo problema
+  (0/381, la vista de galería del evento en el sitio público también queda vacía) — requiere
+  threading del listado de `file_id`s ya resueltos por `applyGallery()` hacia `applyEvent()` en
+  formato CSV, más su propia reconciliación. No implementado; pendiente de decisión.
+
+  10 tests nuevos/extendidos en `LegacyApplyServiceTest.php` (reconciliación de entrada CMS +
+  reconciliación de evento en el mismo test de 3 corridas), `composer quality` ✅ (692 tests, 2
+  skips preexistentes).
+
 - **LEGACY-MAP-027 — Publicar el contenido migrado: draft/scheduled → published
   (2026-08-01):** Toda la migración legacy (022-026) creaba contenido en estado no-público por
   diseño (`workflow_status: draft` en `applyCmsEntry()`, `status: scheduled` en `applyEvent()`)

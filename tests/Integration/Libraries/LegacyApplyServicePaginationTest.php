@@ -82,6 +82,12 @@ final class PaginatedEntriesFakeClient implements LegacyDomainClientInterface
         return ['data' => ['id' => $this->nextId++]];
     }
 
+    /** @param array<string, mixed> $payload */
+    public function put(string $path, array $payload = []): array
+    {
+        return ['data' => ['id' => $this->nextId]];
+    }
+
     /** @param array<string, mixed> $fields */
     public function upload(string $path, string $filePath, string $filename, array $fields = []): array
     {

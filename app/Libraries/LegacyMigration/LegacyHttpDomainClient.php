@@ -49,6 +49,15 @@ final class LegacyHttpDomainClient implements LegacyDomainClientInterface
     }
 
     /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function put(string $path, array $payload = []): array
+    {
+        return $this->request('PUT', $path, ['json' => $payload]);
+    }
+
+    /**
      * @param array<string, mixed> $fields
      * @return array<string, mixed>
      */
