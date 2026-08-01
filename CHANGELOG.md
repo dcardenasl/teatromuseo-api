@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`DomainFileUsageClient`** — `FileService::destroy()`/`forceDestroy()` now check file usage
   across the CMS, catalog, and event domains (not just the Hub's own `file_references`) before
   deleting, and broadcast cache invalidation to those domains after a successful delete/replace.
+- **`LegacyApplyService`** — `sn_compania.director_compania` now maps into `compania_ficha.director`
+  during migration instead of being dropped silently.
 
 ### Fixed
 
@@ -29,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project's actual default (`teatromuseo_api`).
 - **`LegacyHttpDomainClient`** — fixed a `curlrequest` service call that passed `null` where an
   array config was expected, silently breaking the shared-instance flag.
+- **`LegacyHttpDomainClient::upload()`** — built multipart uploads in Guzzle's list-of-`{name,
+  contents, filename}` shape, but CI4's `CURLRequest` passes `config['multipart']` straight to
+  `CURLOPT_POSTFIELDS`, which expects a flat `field => value` array with `CURLFile` for the file
+  field. Every asset upload during `legacy:apply` failed with "No file was uploaded".
+- **`LegacyApplyService::assetFile()`** — a single Hub-rejected upload (oversized file,
+  unsupported mime type) aborted the entire `legacy:apply` slice instead of being recorded as an
+  issue and letting the rest of the run continue.
 - **`PermissionUpdateRequestDTO`, `RoleUpdateRequestDTO`, `UserUpdateRequestDTO`** — update
   requests can now explicitly clear a nullable field to `null` instead of silently dropping it
   (the DTOs previously used `array_filter($v !== null)`, which made it impossible to clear a
