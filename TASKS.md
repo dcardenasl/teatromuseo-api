@@ -15,6 +15,52 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-016 — Ejecutar `legacy:apply --slice B/C` real + corregir abort por archivo rechazado (2026-08-01):**
+  Slice B (cursos/profesores) aplicó a la primera sin bugs nuevos: 6 entradas, 7 bloques, 4
+  archivos, 3 issues (`asset_missing`, campos vacíos legítimos), idempotencia confirmada.
+  Slice C (exposiciones/publicaciones/noticias/festival) encontró un tercer bug real:
+  `LegacyApplyService::assetFile()` no capturaba errores de `$this->hub->upload()`, así que un
+  solo archivo rechazado por el hub (3 PDFs de `sn_prensa` superan `Api::$fileMaxSize` = 10MB)
+  abortaba **todo el slice**, incluso después de crear decenas de entradas correctamente.
+  Corregido con un `try/catch(\RuntimeException)` alrededor del upload: ahora registra un issue
+  `asset_rejected` (mensaje del hub conservado literal) y continúa con el resto del slice — el
+  mismo principio de "no perder la fila, no abortar el lote" que ya regía `asset_missing`. Con
+  el fix: 67 entradas CMS, 35 bloques, 47 archivos, 31 issues (28 esperados + 3
+  `asset_rejected`), idempotencia confirmada (0 creados en la segunda corrida). Hay ~6 archivos
+  legacy más (hasta 28MB, un libro editorial) que tropezarán con el mismo límite cuando se
+  migren sus tablas — **decisión de `FILE_MAX_SIZE` pendiente, no tomada unilateralmente**. Ver
+  `../docs/legacy-cms-pilot-mapping.md` sección 10.3-10.4. `composer quality` ✅ (676 tests, 2
+  skips preexistentes no relacionados).
+
+- **LEGACY-MAP-015 — Ejecutar `legacy:apply --slice A` real + corregir bug de upload multipart (2026-08-01):**
+  Primera ejecución material (no dry-run) contra hub/cms-domain/event-domain con JWT superadmin
+  y `--asset-root` real (`teatromuseo_webapp_php/`, 2.680 assets). Falló primero en
+  `LegacyHttpDomainClient::upload()`: construía el multipart en forma Guzzle
+  (`[{name, contents, filename}]` con un `resource` de `fopen()` como `contents`), pero
+  `CI4\HTTP\CURLRequest::applyBody()` pasa `config['multipart']` directo a
+  `CURLOPT_POSTFIELDS`, que espera un array asociativo plano `field => valor` con `CURLFile`
+  para el archivo — no el shape de Guzzle. Corregido: ahora construye
+  `['file' => new \CURLFile(...), ...campos]`. Verificado con upload real contra el hub (`curl
+  -F` directo confirmó que el endpoint en sí funcionaba antes del fix; el bug era 100% del
+  lado cliente). Con el fix: Slice A aplicó 15 entradas, 7 eventos, 10 ocurrencias, 32 bloques,
+  32 archivos, 7 referencias, 0 issues; una segunda corrida confirmó idempotencia exacta (0
+  creados, todo reusado). Contraparte del fix en cms-domain
+  (`EntryBlockTemplateInitializer` — ver su TASKS.md) necesaria para que el contenido de los
+  bloques no quedara vacío. Detalle completo, incluyendo la limpieza de datos de prueba
+  intermedios, en `../docs/legacy-cms-pilot-mapping.md` sección 10.2. `composer quality` ✅
+  (676 tests, 2 skips preexistentes no relacionados).
+
+- **LEGACY-MAP-014 — Mapear `director_compania` en `LegacyApplyService` (2026-08-01):**
+  Contraparte del cambio de schema en `teatromuseo-cms-domain` (`compania_ficha.director` +
+  `director_ref`). `LegacyApplyService::applyCmsEntry()` para `sn_compania` ahora incluye
+  `'director' => director_compania` en el `block_data`. Deliberadamente NO se toca
+  `director_ref` (entry_reference a `personas`) desde el ETL — buena parte de los valores
+  legacy de `director_compania` son placeholder del editor (`"Director"`, `"Director El Árbol
+  de Ko"`), no nombres reales; crear/emparejar automáticamente fichas de `personas` a partir de
+  ese campo contaminaría la colección. Ver `../docs/legacy-cms-pilot-mapping.md` para el detalle
+  completo. Verificado: `composer quality` ✅ (PHPStan 0 errores, 676 tests, 2 skips
+  preexistentes no relacionados).
+
 - **DEPS-001 — Falso positivo de "abandoned" para sebastian/code-unit (2026-07-31):** `composer
   audit` marcaba `sebastian/code-unit`/`sebastian/code-unit-reverse-lookup` (transitivos de
   PHPUnit) como abandonados. Verificado contra Packagist en vivo: **no** están abandonados — el
