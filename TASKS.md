@@ -19,14 +19,32 @@
   paquete Composer externo, no en este repo — requiere fix en la fuente de `ci4-api-core`.
   Encontrado 2026-08-01 corrigiendo `cta_url` de las slides del home slider (ver
   `../docs/legacy-cms-pilot-mapping.md` sección 12.3).
-- [ ] **LEGACY-MAP-017 — Decisión pendiente: migrar `sn_contact_message` (157 filas de PII).** No
-  se ejecuta sin confirmación explícita de David sobre retención/privacidad de datos de
-  visitantes reales. Target técnico ya existe (`cms_form_submissions` en cms-domain).
 - [ ] **LEGACY-MAP-018 — Decisión pendiente: páginas TeatroEscuela y Anímate.** `sn_banner`,
   `sn_section` y `sn_page_description` referencian páginas que no existen en la IA actual del
   sitio nuevo; requiere decisión de diseño de página/navegación antes de poder migrarlas.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-017 — Migrar `sn_contact_message` (157 filas de PII) (2026-08-01):** David
+  confirmó: migrar el histórico completo (nombre/email/teléfono/mensaje reales), sin
+  retención/expiración automática. El endpoint público `POST public/submissions` no servía —
+  siempre pisa `created_at`=ahora y `status`=new — así que se agregó `POST
+  /api/v1/cms/submissions/import` en cms-domain (`FormSubmissionImportRequestDTO` +
+  `FormSubmissionService::import()`, gateado por el permiso ya existente
+  `cms.submissions.write`), que preserva `created_at`/`status` reales (inserta vía el modelo y
+  luego corrige `created_at` con `$this->model->builder()->update()`, porque `useTimestamps`
+  siempre pisa el valor en `insert()`/`update()` normal) y salta CAPTCHA/emails de notificación
+  (no tiene sentido re-notificar hoy sobre un mensaje de 2024). Nuevo slice D en el motor de
+  migración: `LegacySliceDAnalyzer` (dry-run) + `LegacyApplyService::applyContactMessages()`
+  (apply), wireados en `legacy:dry-run`/`legacy:apply --slice D`. Mapeo: `status_id`
+  1=PENDIENTE→`new`, 2=COMPLETADA→`replied` (las 157 filas reales del dump son todas
+  COMPLETADA); `ip_address`/`user_agent` se preservan cuando el legacy los tenía (31/157 filas).
+  Ejecutado contra el dump real y cms-domain corriendo: 157 creadas, 0 issues, segunda corrida
+  idempotente (0 creadas, 157 reusadas vía `legacy_migration_map`). Verificado directamente en
+  `teatromuseo_cms_domain.cms_form_submissions`: 157 filas, `created_at` real preservado
+  (mín. 2024-07-11, no la fecha de import), encoding UTF-8 correcto, ip/user_agent presentes en
+  las 31 filas que los tenían. `composer quality` ✅ en ambos repos (api: 680/680 tests, 2 skips
+  preexistentes; cms-domain: 522/522 tests, 1 skip preexistente).
 
 - **LEGACY-MAP-021 — Limpiar el home hero slider: demo fuera, URLs internas, imágenes reales (2026-08-01):**
   David probó el home real y encontró slides sin imagen y mezcladas con contenido de demo del

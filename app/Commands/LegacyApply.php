@@ -25,7 +25,7 @@ final class LegacyApply extends BaseCommand
     protected $description = 'Apply a legacy slice through CMS/Event APIs with idempotent mapping.';
     protected $usage = 'php spark legacy:apply --slice A --confirm --admin-token-file /path/token.txt [--dump /path/dump.sql] [--asset-root /path]';
     protected $options = [
-        '--slice' => 'Slice identifier: A, B or C.',
+        '--slice' => 'Slice identifier: A, B, C or D.',
         '--confirm' => 'Required explicit confirmation before writing domain content.',
         '--admin-token' => 'JWT for a superadmin account. Never store it in source control.',
         '--admin-token-file' => 'Readable file containing a JWT; safer than exposing it in process arguments.',
@@ -39,8 +39,8 @@ final class LegacyApply extends BaseCommand
     public function run(array $params): int
     {
         $slice = strtoupper((string) ($this->optionValue('slice') ?: 'A'));
-        if (! in_array($slice, ['A', 'B', 'C'], true)) {
-            CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B, C.");
+        if (! in_array($slice, ['A', 'B', 'C', 'D'], true)) {
+            CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B, C, D.");
             return EXIT_ERROR;
         }
         if ($this->optionValue('confirm') === null) {
@@ -77,6 +77,7 @@ final class LegacyApply extends BaseCommand
             $targetTables = match ($slice) {
                 'B' => ['sn_escuela', 'sn_cursos', 'sn_escuela_img', 'sn_profesor', 'sn_categoria_escuela'],
                 'C' => ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_funcionarios', 'sn_museo', 'sn_slider'],
+                'D' => ['sn_contact_message', 'sn_contact_status'],
                 default => ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube', 'sn_publico'],
             };
             $tables = $reader->rowsForTables($targetTables);

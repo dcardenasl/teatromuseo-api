@@ -23,7 +23,7 @@ final class LegacyDryRun extends BaseCommand
     protected $description = 'Analyze a legacy SQL slice without writing domain content.';
     protected $usage = 'php spark legacy:dry-run --slice A [--dump /path/dump.sql] [--asset-root /path] [--output /path]';
     protected $options = [
-        '--slice' => 'Slice identifier. Supported: A, B or C.',
+        '--slice' => 'Slice identifier. Supported: A, B, C or D.',
         '--dump' => 'Path to the legacy SQL dump. Defaults to the repository dump.',
         '--asset-root' => 'Optional root directory containing legacy public assets.',
         '--output' => 'Optional output directory for summary.json, mapping.json and CSV reports.',
@@ -33,8 +33,8 @@ final class LegacyDryRun extends BaseCommand
     public function run(array $params): int
     {
         $slice = strtoupper((string) ($this->optionValue('slice') ?: 'A'));
-        if (! in_array($slice, ['A', 'B', 'C'], true)) {
-            CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B, C.");
+        if (! in_array($slice, ['A', 'B', 'C', 'D'], true)) {
+            CLI::error("Unsupported slice '{$slice}'. Supported slices: A, B, C, D.");
 
             return EXIT_ERROR;
         }
@@ -113,6 +113,9 @@ final class LegacyDryRun extends BaseCommand
         if ($slice === 'C') {
             return ['sn_expo', 'sn_expo_img', 'sn_noticias', 'sn_editorial', 'sn_prensa', 'sn_administracion', 'sn_upa', 'sn_funcionarios', 'sn_museo'];
         }
+        if ($slice === 'D') {
+            return ['sn_contact_message', 'sn_contact_status'];
+        }
 
         return ['sn_compania', 'sn_obra', 'sn_slider_cartelera', 'sn_youtube', 'sn_publico'];
     }
@@ -128,6 +131,9 @@ final class LegacyDryRun extends BaseCommand
         }
         if ($slice === 'C') {
             return (new \App\Libraries\LegacyMigration\LegacySliceCAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);
+        }
+        if ($slice === 'D') {
+            return (new \App\Libraries\LegacyMigration\LegacySliceDAnalyzer())->analyze($tables, $dumpPath, $sourceHash);
         }
 
         return (new LegacySliceAAnalyzer($assetResolver))->analyze($tables, $dumpPath, $sourceHash);

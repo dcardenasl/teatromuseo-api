@@ -53,8 +53,8 @@ final class LegacyApplyService
             'slice' => $slice,
             'mode' => LegacyMigrationCatalog::MODE_APPLY,
             'source' => ['path' => $sourcePath, 'sha256' => $this->sourceHash],
-            'created' => ['cms_entries' => 0, 'events' => 0, 'occurrences' => 0, 'blocks' => 0, 'files' => 0, 'references' => 0],
-            'reused' => ['cms_entries' => 0, 'events' => 0, 'occurrences' => 0, 'blocks' => 0, 'files' => 0, 'references' => 0],
+            'created' => ['cms_entries' => 0, 'events' => 0, 'occurrences' => 0, 'blocks' => 0, 'files' => 0, 'references' => 0, 'form_submissions' => 0],
+            'reused' => ['cms_entries' => 0, 'events' => 0, 'occurrences' => 0, 'blocks' => 0, 'files' => 0, 'references' => 0, 'form_submissions' => 0],
             'issues' => 0,
         ];
 
@@ -63,6 +63,8 @@ final class LegacyApplyService
             $this->applyCourses($tables, $runId);
         } elseif ($slice === 'C') {
             $this->applySliceC($tables, $runId);
+        } elseif ($slice === 'D') {
+            $this->applyContactMessages($tables, $runId);
         } else {
             $this->applyWorks($tables, $runId);
         }
@@ -1572,6 +1574,76 @@ final class LegacyApplyService
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Backfills sn_contact_message into cms-domain's cms_form_submissions via
+     * the admin-only import endpoint, preserving the real send date and
+     * status instead of stamping the import time. Every row is real visitor
+     * PII (David confirmed full migration, no retention window — see
+     * LEGACY-MAP-017 in TASKS.md): a row that fails is recorded as an issue
+     * and skipped, never dropped silently and never aborts the rest of the
+     * slice.
+     *
+     * @param array<string, list<array<string, mixed>>> $tables
+     */
+    private function applyContactMessages(array $tables, int $runId): void
+    {
+        $statusTitles = [];
+        foreach ($tables['sn_contact_status'] ?? [] as $status) {
+            $statusId = $this->stringValue($status['id'] ?? '');
+            if ($statusId !== '') {
+                $statusTitles[$statusId] = strtoupper($this->stringValue($status['title'] ?? ''));
+            }
+        }
+
+        foreach ($tables['sn_contact_message'] ?? [] as $message) {
+            $legacyId = $this->stringValue($message['id'] ?? '');
+            if ($legacyId === '') {
+                $this->summary['issues']++;
+                continue;
+            }
+
+            $mapped = $this->repository->findMap('sn_contact_message', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'form_submission');
+            if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
+                $this->summary['reused']['form_submissions']++;
+                continue;
+            }
+
+            $statusTitle = $statusTitles[$this->stringValue($message['status_id'] ?? '')] ?? null;
+            $status = $statusTitle === 'COMPLETADA' ? 'replied' : 'new';
+
+            $createdAt = $this->stringValue($message['date_send'] ?? '');
+            $parsedDate = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $createdAt);
+            if ($parsedDate === false || $parsedDate->format('Y-m-d H:i:s') !== $createdAt) {
+                $this->summary['issues']++;
+                $createdAt = null;
+            }
+
+            try {
+                $response = $this->cms->post('/cms/submissions/import', [
+                    'form_key' => 'contact',
+                    'form_data' => [
+                        'name' => $this->stringValue($message['name_contact'] ?? ''),
+                        'email' => $this->stringValue($message['email_address'] ?? ''),
+                        'phone' => $this->stringValue($message['phone_number'] ?? ''),
+                        'message' => $this->stringValue($message['message_text'] ?? ''),
+                    ],
+                    'status' => $status,
+                    'created_at' => $createdAt,
+                    'ip_address' => $this->stringValue($message['ip_address'] ?? '') ?: null,
+                    'user_agent' => $this->stringValue($message['user_agent'] ?? '') ?: null,
+                ]);
+            } catch (\RuntimeException $exception) {
+                $this->summary['issues']++;
+                $this->map($runId, 'sn_contact_message', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'form_submission', null, LegacyMigrationCatalog::MAP_QUARANTINED, 'import_rejected: ' . $exception->getMessage());
+                continue;
+            }
+
+            $id = $this->extractId($response);
+            $this->map($runId, 'sn_contact_message', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'form_submission', (string) $id, LegacyMigrationCatalog::MAP_MAPPED, 'created through cms-domain submissions/import');
+            $this->summary['created']['form_submissions']++;
         }
     }
 }

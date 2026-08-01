@@ -124,6 +124,69 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
             $repository->findMap('sn_cursos', '25', LegacyMigrationCatalog::TARGET_CMS, 'entry')['status']
         );
     }
+
+    public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void
+    {
+        $hash = hash('sha256', 'legacy-contact-fixture');
+        $tables = [
+            'sn_contact_message' => [
+                [
+                    'id' => '16',
+                    'date_send' => '2024-07-11 16:54:23',
+                    'name_contact' => 'Silvana Vargas',
+                    'email_address' => 'svargas@example.cl',
+                    'phone_number' => '949019332',
+                    'message_text' => 'Hola, quisiera cotizar una visita.',
+                    'status_id' => '2',
+                    'ip_address' => null,
+                    'user_agent' => null,
+                ],
+                [
+                    'id' => '17',
+                    'date_send' => '2024-07-18 09:27:17',
+                    'name_contact' => 'Daniele Lupi',
+                    'email_address' => 'daniele@example.it',
+                    'phone_number' => '2147483647',
+                    'message_text' => 'Buen dia',
+                    'status_id' => '1',
+                    'ip_address' => '190.0.0.1',
+                    'user_agent' => 'Mozilla/5.0',
+                ],
+            ],
+            'sn_contact_status' => [
+                ['id' => '1', 'title' => 'PENDIENTE'],
+                ['id' => '2', 'title' => 'COMPLETADA'],
+            ],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+
+        $firstRun = $repository->createRun('legacy-contact-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/contact-fixture.sql', $hash);
+        $first = $service->apply('D', $tables, '/tmp/contact-fixture.sql', $firstRun);
+        $repository->finishRun($firstRun, LegacyMigrationCatalog::RUN_COMPLETED, $first);
+
+        $secondRun = $repository->createRun('legacy-contact-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/contact-fixture.sql', $hash);
+        $second = $service->apply('D', $tables, '/tmp/contact-fixture.sql', $secondRun);
+        $repository->finishRun($secondRun, LegacyMigrationCatalog::RUN_COMPLETED, $second);
+
+        $this->assertSame(2, $first['created']['form_submissions']);
+        $this->assertSame(0, $second['created']['form_submissions']);
+        $this->assertSame(2, $second['reused']['form_submissions']);
+
+        $payloads = $client->payloads('/cms/submissions/import');
+        $this->assertCount(2, $payloads);
+        $this->assertSame('2024-07-11 16:54:23', $payloads[0]['created_at']);
+        $this->assertSame('replied', $payloads[0]['status']);
+        $this->assertSame('Silvana Vargas', $payloads[0]['form_data']['name']);
+        $this->assertSame('949019332', $payloads[0]['form_data']['phone']);
+        $this->assertNull($payloads[0]['ip_address']);
+        $this->assertSame('new', $payloads[1]['status']);
+        $this->assertSame('190.0.0.1', $payloads[1]['ip_address']);
+
+        $mapped = $repository->findMap('sn_contact_message', '16', LegacyMigrationCatalog::TARGET_CMS, 'form_submission');
+        $this->assertSame(LegacyMigrationCatalog::MAP_MAPPED, $mapped['status']);
+    }
 }
 
 /**
@@ -140,6 +203,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
     private int $nextEventId = 200;
     private int $nextOccurrenceId = 300;
     private int $nextReferenceId = 400;
+    private int $nextSubmissionId = 500;
 
     /** @param array<string, mixed> $query */
     public function get(string $path, array $query = []): array
@@ -182,6 +246,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
             '/events/events' => ['data' => ['id' => $this->nextEventId++]],
             '/events/occurrences' => ['data' => ['id' => $this->nextOccurrenceId++]],
             '/events/event-references' => ['data' => ['id' => $this->nextReferenceId++]],
+            '/cms/submissions/import' => ['data' => ['id' => $this->nextSubmissionId++]],
             default => throw new \RuntimeException("Unexpected migration POST {$path}"),
         };
     }
