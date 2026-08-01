@@ -1264,12 +1264,20 @@ final class LegacyApplyService
                 $coverFileId = $this->assetFile('sn_noticias', $id, $coverPath, 'news-cover-' . $id, $runId);
             }
 
+            // The 'news' collection's block_template declares a single required,
+            // auto_create rich_text block ("Titular") at sort_order 1 — feed its
+            // 'cuerpo' through wizard_extra so EntryBlockTemplateInitializer fills
+            // that exact block, instead of leaving it required-but-empty and
+            // creating a second, redundant rich_text block by hand (the shape this
+            // code used before the JsonCastNormalizer fix made wizard_extra
+            // matching actually work — see LEGACY-MAP-015).
             $wizardExtra = [
                 'publish_date' => $this->validDate($news['fecha'] ?? null) ? $this->stringValue($news['fecha']) : null,
                 'lead' => $this->stringValue($news['lead'] ?? ''),
+                'content' => $this->stringValue($news['cuerpo'] ?? ''),
             ];
 
-            $entryId = $this->applyCmsEntry(
+            $this->applyCmsEntry(
                 'sn_noticias',
                 $id,
                 'noticias',
@@ -1280,40 +1288,6 @@ final class LegacyApplyService
                 $runId,
                 $coverFileId
             );
-
-            $cuerpo = $this->stringValue($news['cuerpo'] ?? '');
-            if ($cuerpo !== '') {
-                $richTextBlockId = $this->blockTypes['rich_text'] ?? throw new \RuntimeException('CMS block type rich_text is not configured.');
-                $recoveredBlockId = $this->findCmsBlock($entryId, $richTextBlockId, null, 10, null);
-                if ($recoveredBlockId !== null) {
-                    $this->map($runId, 'sn_noticias', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic body block lookup');
-                    $this->summary['reused']['blocks']++;
-                } else {
-                    $translations = [];
-                    foreach ($this->languages as $code => $langId) {
-                        $translations[] = [
-                            'language_id' => $langId,
-                            'block_data' => ['content' => $cuerpo],
-                            'is_published' => true,
-                        ];
-                    }
-                    $response = $this->cms->post('/cms/entries/' . $entryId . '/blocks', [
-                        'block_id' => $richTextBlockId,
-                        'owner_type' => 'entry',
-                        'owner_id' => $entryId,
-                        'parent_instance_id' => null,
-                        'sort_order' => 10,
-                        'column_index' => null,
-                        'is_active' => true,
-                        'block_config' => ['css_class' => ''],
-                        'translations' => $translations,
-                    ]);
-                    $blockId = $this->extractId($response);
-                    $this->rememberCmsBlock($blockId, $richTextBlockId, $entryId, null, 10, null);
-                    $this->map($runId, 'sn_noticias', $id . ':cuerpo', LegacyMigrationCatalog::TARGET_CMS, 'rich_text_block', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'rich text body block');
-                    $this->summary['created']['blocks']++;
-                }
-            }
         }
     }
 
