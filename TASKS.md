@@ -11,9 +11,53 @@
 
 ## 🟡 Próximo
 
-*(vacío)*
+- [ ] **LEGACY-MAP-017 — Decisión pendiente: migrar `sn_contact_message` (157 filas de PII).** No
+  se ejecuta sin confirmación explícita de David sobre retención/privacidad de datos de
+  visitantes reales. Target técnico ya existe (`cms_form_submissions` en cms-domain).
+- [ ] **LEGACY-MAP-018 — Decisión pendiente: páginas TeatroEscuela y Anímate.** `sn_banner`,
+  `sn_section` y `sn_page_description` referencian páginas que no existen en la IA actual del
+  sitio nuevo; requiere decisión de diseño de página/navegación antes de poder migrarlas.
 
 ## ✅ Completadas
+
+- **LEGACY-MAP-019 — Cerrar la lista de pendientes de la migración final (2026-08-01):**
+  Pasada completa sobre los pendientes documentados en `../docs/legacy-cms-pilot-mapping.md`
+  sección 10.4, a pedido explícito de David ("corrige y realiza todo... no te detengas hasta
+  completarlo todo"):
+  1. **Bug real de noticias**: `applyNoticias()` creaba un bloque `rich_text` requerido
+     auto-creado vacío (el "Titular" de la plantilla) más uno manual redundante con el cuerpo
+     real. Corregido pasando `content` por `wizard_extra` y eliminando el bloque manual; las 20
+     noticias ya migradas se purgaron y re-aplicaron limpias.
+  2. **Falso positivo "Desactualizado"**: mismo patrón ya diagnosticado el 2026-07-21 para
+     bloques (ver `TranslationAuditSupport::collapseForBlockBadge()`), nunca corregido en la
+     raíz para entradas. `EntryService::afterStore()` escribía las traducciones antes del
+     housekeeping de `wizard_extra`, así que ese segundo write podía dejar `cms_entries.
+     updated_at` un segundo después de `cms_entry_translations.updated_at` y disparar el falso
+     "outdated". Corregido reordenando `afterStore()` (ver TASKS.md de cms-domain).
+  3. **`FILE_MAX_SIZE`**: subido a 32MB sólo en `.env` local (gitignored) el tiempo necesario
+     para reintentar los 3 PDFs rechazados de `sn_prensa`, y revertido a 10MB al terminar. Sin
+     tocar configuración versionada ni compartida.
+  4. **`sn_slider` (home hero slider)**: nuevo `applyHomeSliderSlides()` en `LegacyApplyService`
+     (7° paso de Slice C) migra las 5 slides visibles de `categoria=1` (Index/home) como hijos
+     `slide_banner` del `hero_slider` ya seedeado en la página `home`. Las de
+     `categoria=2/3/4/5` (nosotros/historia/Upa Chalupa/Anímate) no tienen contenedor o página
+     destino — eso es una decisión de diseño de página, no una transformación de datos, y
+     quedó explícitamente sin tocar (ver LEGACY-MAP-018). **Seguimiento (2026-08-01):** las 5
+     imágenes fallaron en el `asset-root` local (no las 2 reportadas inicialmente — error de
+     conteo corregido), porque se subieron a producción después del último snapshot local. Con
+     autorización de David, se descargaron desde `https://teatromuseo.cl` y se subieron al hub
+     manualmente; los 5 slides ya sirven su imagen real.
+  5. **`sn_contact_status`**: confirmado completamente superado por el ENUM `status` de
+     `cms_form_submissions` en cms-domain — nada que migrar.
+  6. **`t_expo`**: confirmado 0 filas. **`sn_personal`**: confirmado política ya documentada de
+     no-migración (hashes MD5 legacy).
+  7. **`sn_contact_message`** (157 filas PII) quedó explícitamente sin migrar — requiere
+     decisión de David, no técnica (ver LEGACY-MAP-017).
+
+  Verificado end-to-end: auditoría de traducciones en 100%/100%/100%/100% (0 issues), Slice
+  A/B/C idempotentes tras cada cambio (segunda corrida siempre 0 creados), `composer quality`
+  ✅ (676 tests, 2 skips preexistentes no relacionados) en cada paso. Detalle completo en
+  `../docs/legacy-cms-pilot-mapping.md` sección 11.
 
 - **LEGACY-MAP-016 — Ejecutar `legacy:apply --slice B/C` real + corregir abort por archivo rechazado (2026-08-01):**
   Slice B (cursos/profesores) aplicó a la primera sin bugs nuevos: 6 entradas, 7 bloques, 4
