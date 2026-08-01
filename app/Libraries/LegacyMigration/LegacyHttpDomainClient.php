@@ -58,30 +58,19 @@ final class LegacyHttpDomainClient implements LegacyDomainClientInterface
             throw new \InvalidArgumentException("Legacy asset is not readable: {$filePath}");
         }
 
-        $handle = fopen($filePath, 'rb');
-        if ($handle === false) {
-            throw new \RuntimeException("Unable to open legacy asset: {$filePath}");
+        // CI4's CURLRequest passes `config['multipart']` straight to
+        // CURLOPT_POSTFIELDS (system/HTTP/CURLRequest.php::applyBody()), which
+        // expects a flat `field_name => value` array with CURLFile for the file
+        // field — not Guzzle's list-of-{name,contents,filename} shape.
+        $mimeType = mime_content_type($filePath);
+        $multipart = [
+            'file' => new \CURLFile($filePath, $mimeType !== false ? $mimeType : 'application/octet-stream', $filename),
+        ];
+        foreach ($fields as $name => $value) {
+            $multipart[(string) $name] = (string) $value;
         }
 
-        try {
-            $multipart = [
-                [
-                    'name'     => 'file',
-                    'contents' => $handle,
-                    'filename' => $filename,
-                ],
-            ];
-            foreach ($fields as $name => $value) {
-                $multipart[] = [
-                    'name'     => (string) $name,
-                    'contents' => (string) $value,
-                ];
-            }
-
-            return $this->request('POST', $path, ['multipart' => $multipart]);
-        } finally {
-            fclose($handle);
-        }
+        return $this->request('POST', $path, ['multipart' => $multipart]);
     }
 
     /**
