@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Museum/Press/Foundation legacy tables (`sn_expo`, `sn_noticias`, `sn_editorial`, `sn_prensa`,
   `sn_administracion`, `sn_upa`, `sn_funcionarios`, `sn_museo`), and both commands now accept
   `--slice C`.
+- **`legacy:dry-run` / `legacy:apply` slice D support** — `LegacySliceDAnalyzer` analyzes
+  `sn_contact_message`/`sn_contact_status`, and `LegacyApplyService::applyContactMessages()`
+  migrates the 157 legacy contact messages into cms-domain's `cms_form_submissions` via the new
+  `POST /api/v1/cms/submissions/import` endpoint, preserving original `created_at`/`status`.
 - **`LegacyApplyService`** — CMS entries and blocks created during migration now get a
   translation per active CMS language instead of Spanish only, and entries are deduplicated by
   slug across collections to avoid duplicate creation on re-runs.
