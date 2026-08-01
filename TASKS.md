@@ -11,7 +11,41 @@
 
 ## 🟡 Próximo
 
-*(vacío)*
+- [ ] **LEGACY-MAP-022 — Preparación para la migración completa: asset-root + limpieza de datos.**
+  El `asset-root` local (`teatromuseo_webapp_php`) está incompleto para contenido subido
+  recientemente (ya golpeó esto 2 veces: slider del home, portada de Anímate). A escala completa
+  (miles de imágenes) esto generará muchos `asset_missing`. Antes de migrar en serio: (1) escribir
+  un script que recorra los paths de imagen de cada tabla objetivo, detecte cuáles faltan en el
+  snapshot local, y las descargue de `https://teatromuseo.cl` (requiere autorización explícita de
+  David — son potencialmente cientos de archivos). (2) Confirmar con David exclusión de basura ya
+  detectada: 2 filas en `sn_obra` con `titulo_obra` "Test"/"TEst". No se decide unilateralmente.
+
+- [ ] **LEGACY-MAP-023 — Migración completa Slice B: cursos y profesores.** Quitar los límites
+  hardcodeados en `LegacyApplyService::applyCourses()` (`array_slice($courses, 0, 3)` y
+  `count($teachers) >= 20`) — hoy solo 3 de 53 `sn_escuela` y 3 de 57 `sn_profesor` están
+  migrados. Directamente relevante: es lo que ahora representa "Cursos" para la decisión de
+  TeatroEscuela (LEGACY-MAP-018). Candidata a ir primero — tamaño manejable, sin bloqueos de
+  diseño pendientes.
+
+- [ ] **LEGACY-MAP-024 — Migración completa Slice A: obras, compañías, galería y videos.** Quitar
+  `array_slice($workRows, 0, 10)`, el cap `count($referencedCompanyIds) < 3`, y
+  `array_slice($videoGroups, 0, 5, true)` en `applyWorks()`. Hoy: 11 de 759 `sn_obra`, 3 de 235
+  `sn_compania`, 5 de 53 `sn_youtube`. La más grande — probablemente conviene correrla en varias
+  pasadas controladas en vez de una sola corrida masiva, dado el volumen de llamadas HTTP y de
+  imágenes (`sn_slider_cartelera`, 1320 filas, escala junto con esta).
+
+- [ ] **LEGACY-MAP-025 — Migración completa Slice C: noticias y publicaciones.** Quitar
+  `array_slice($newsRows, 0, 20)` en `applyNoticias()` (20 de 80 hoy) y subir/quitar
+  `$pubLimit = 30` en `applyPublicaciones()` (30 de 66 hoy, combinando `sn_editorial` +
+  `sn_prensa` + `sn_administracion`). `sn_expo`/`sn_funcionarios`/`sn_museo`/`sn_upa` ya están
+  completos, no requieren cambios.
+
+- [ ] **LEGACY-MAP-026 — Decisión de diseño: sliders de páginas no-home (`sn_slider`
+  categorías 2-5).** De 499 filas de `sn_slider`, solo las 5 de categoría 1 (home) están
+  migradas — las de "Quienes Somos"/"Historia"/"Upa Chalupa"/"Anímate" (categorías 2-5) no tienen
+  página/contenedor destino en la IA actual del sitio nuevo (mismo bloqueo ya documentado en
+  LEGACY-MAP-018 sección 11.6 del pilot mapping). Requiere decisión de David antes de ser
+  trabajo técnico.
 
 ## ✅ Completadas
 
