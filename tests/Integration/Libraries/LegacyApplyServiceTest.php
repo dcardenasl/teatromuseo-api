@@ -341,6 +341,71 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         }
     }
 
+    public function testCurrentCourseCoverIsAlsoAddedAsGalleryFirstImageWithoutDuplicateUpload(): void
+    {
+        // Rule (David, 2026-08-02): a course's cover must also exist as the first image of its
+        // own gallery. sn_cursos ("Cursos Actuales") has no gallery table of its own — its cover
+        // is its only image at all — so applyCurrentCourses() synthesizes a one-item gallery
+        // from the SAME resolved cover file, reusing the upload rather than fetching it twice.
+        $assetRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'teatromuseo-current-course-cover-fixture-' . bin2hex(random_bytes(8));
+        mkdir($assetRoot, 0755, true);
+        file_put_contents($assetRoot . '/curso-actual-cover.jpg', 'current course cover bytes');
+
+        try {
+            $hash = hash('sha256', 'legacy-current-course-cover-gallery-fixture');
+            $tables = [
+                'sn_escuela' => [],
+                'sn_cursos' => [
+                    ['id' => '9701', 'title' => 'Curso Actual Con Portada', 'description_text' => 'Desc', 'image_cover' => 'curso-actual-cover.jpg'],
+                ],
+                'sn_escuela_img' => [],
+                'sn_profesor' => [],
+                'sn_categoria_escuela' => [],
+            ];
+
+            $resolver = new LegacyAssetResolver($assetRoot);
+            $client = new LegacyApplyRecordingClient();
+            $client->allowUploads = true;
+            $repository = new LegacyMigrationRepository($this->db);
+            $service = new LegacyApplyService($repository, $client, $client, $client, $resolver, $hash);
+            $runId = $repository->createRun('legacy-current-course-cover-gallery-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/current-course-cover-gallery-fixture.sql', $hash);
+
+            $service->apply('B', $tables, '/tmp/current-course-cover-gallery-fixture.sql', $runId);
+
+            $entryId = 100; // LegacyApplyRecordingClient mints CMS ids starting at 100.
+            $entryPayload = $client->payloads('/cms/entries')[0];
+            $coverFileId = $entryPayload['translations'][0]['featured_image']['file_id'];
+            // LegacyApplyRecordingClient mints file ids starting at 900 — asserting the exact
+            // value (rather than just "not null") proves this was the ONLY upload in the run:
+            // if the gallery step below re-uploaded the same asset instead of reusing it, the
+            // gallery item would carry file id 901, not match this one.
+            $this->assertSame(900, $coverFileId, 'entry must be created with a cover, and it must be the run\'s only upload');
+
+            $blockPayloads = $client->payloads('/cms/entries/' . $entryId . '/blocks');
+            $galleryItemPayload = null;
+            foreach ($blockPayloads as $payload) {
+                if (($payload['block_config']['image']['file_id'] ?? null) !== null) {
+                    $galleryItemPayload = $payload;
+                }
+            }
+            $this->assertNotNull($galleryItemPayload, 'expected a gallery_item block referencing the cover file');
+            $this->assertSame($coverFileId, $galleryItemPayload['block_config']['image']['file_id'], 'gallery item must reuse the exact same file id as the cover, not a re-upload');
+            $this->assertSame(1, $galleryItemPayload['sort_order'], 'cover-derived gallery item must sort first');
+
+            // Re-running with the same inputs must not create a second gallery item.
+            $secondClient = new LegacyApplyRecordingClient();
+            $secondClient->allowUploads = true;
+            $secondService = new LegacyApplyService($repository, $secondClient, $secondClient, $secondClient, $resolver, $hash);
+            $secondRun = $repository->createRun('legacy-current-course-cover-gallery-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/current-course-cover-gallery-fixture.sql', $hash);
+            $secondService->apply('B', $tables, '/tmp/current-course-cover-gallery-fixture.sql', $secondRun);
+
+            $this->assertCount(0, $secondClient->payloads('/cms/entries/' . $entryId . '/blocks'), 'gallery item already exists, no duplicate expected on rerun');
+        } finally {
+            @unlink($assetRoot . '/curso-actual-cover.jpg');
+            @rmdir($assetRoot);
+        }
+    }
+
     public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void
     {
         $hash = hash('sha256', 'legacy-contact-fixture');

@@ -15,6 +15,36 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-033 — Regla complementaria: la portada también debe existir como primer ítem de
+  la galería, sin duplicar imágenes (2026-08-02):** Segunda mitad de la regla pedida por David en
+  LEGACY-MAP-032 — "de esta manera estaríamos repitiendo la misma imagen en la portada y como
+  primer item de la galería". Para `sn_escuela` (Cursos Históricos) esto ya queda satisfecho por
+  construcción (LEGACY-MAP-032 copia la portada DESDE el primer ítem de galería, así que siempre
+  son el mismo archivo). El caso pendiente era `sn_cursos` (Cursos Actuales): tiene su propia
+  portada (`image_cover`) pero **ninguna tabla de galería propia** — su portada no aparecía en
+  ninguna galería.
+  - **Fix en el ETL:** `applyCurrentCourses()` extrae el `coverFileId` ya resuelto a una variable
+    y, si no es null, construye una galería sintética de un solo ítem a partir de esa MISMA
+    portada y la pasa por `applyGallery()`. Para evitar una re-subida duplicada del archivo,
+    `imageTable()` gana un caso nuevo `'sn_cursos' => 'sn_cursos'` — así el lookup de
+    `(legacyTable, legacyId)` que hace `assetFile()` dentro de `applyGallery()` cae exactamente
+    sobre el mismo `legacy_migration_map` que ya registró la portada, reutilizando el mismo
+    file id en vez de subirlo de nuevo. Nueva clave genérica `sort_position` (con prioridad sobre
+    `escuela_img_posicion`/`id_slider`) en el cálculo de `sort_order` de `applyGallery()`, fijada
+    en `1` para este ítem sintético — así queda garantizado en primera posición
+    independientemente del `courseId`.
+  - **Verificado:** nuevo test
+    `testCurrentCourseCoverIsAlsoAddedAsGalleryFirstImageWithoutDuplicateUpload` (14 tests en el
+    archivo, todos ✅) — comprueba que el gallery_item creado referencia el mismo file id que la
+    portada (no un id distinto de una re-subida), que su `sort_order` es 1, y que una segunda
+    corrida no crea un ítem duplicado. `composer quality` ✅ (695 tests, 2 skips preexistentes).
+    En vivo: `legacy:apply --slice B` creó 40 bloques nuevos (galería + ítem × 20 cursos
+    actuales), **0 archivos nuevos** (confirma que no hubo re-subida), 123 entries reusadas.
+    Confirmado en las 20 entradas de `sn_cursos` que el único ítem de su galería usa el mismo
+    file id que su portada, y verificado visualmente en
+    `/es/cursos/el-que-la-sigue-la-consigue-creaciones-2026-c44` que la imagen de portada y la
+    primera miniatura de galería son literalmente el mismo archivo.
+
 - **LEGACY-MAP-032 — Regla: portada de curso histórico = copia de la primera imagen de su
   galería (2026-08-02):** David revisó el paginador completo de `/es/cursos` (6 páginas) y
   reportó varios cursos sin portada; pidió una regla robusta (no un parche puntual): la portada

@@ -396,6 +396,7 @@ final class LegacyApplyService
                 continue;
             }
             $title = $this->stringValue($course['title'] ?? 'Curso');
+            $coverFileId = $this->assetFile('sn_cursos', $courseId, $course['image_cover'] ?? null, 'curso-actual-' . $courseId, $runId);
             $entryId = $this->applyCmsEntry(
                 'sn_cursos',
                 $courseId,
@@ -413,8 +414,32 @@ final class LegacyApplyService
                     'video_url' => $this->stringValue($course['youtube_video_link'] ?? ''),
                 ],
                 $runId,
-                $this->assetFile('sn_cursos', $courseId, $course['image_cover'] ?? null, 'curso-actual-' . $courseId, $runId)
+                $coverFileId
             );
+
+            // Rule (David, 2026-08-02): a course's cover must also exist as the first image of
+            // its own gallery. sn_cursos ("Cursos Actuales") has no gallery table of its own —
+            // the cover is its only image at all — so synthesize a one-item gallery from it.
+            // Reuses imageTable('sn_cursos') === 'sn_cursos', so assetFile() below resolves to
+            // the exact same (legacyTable, legacyId) map row as $coverFileId above and never
+            // re-uploads; 'sort_position' => 1 pins it first regardless of $courseId's value.
+            if ($coverFileId !== null) {
+                $this->applyGallery(
+                    'sn_cursos',
+                    $courseId,
+                    (int) $entryId,
+                    [[
+                        'cover_gallery_id' => $courseId,
+                        'cover_gallery_url' => $course['image_cover'] ?? '',
+                        'cover_gallery_alt' => $title,
+                        'sort_position' => 1,
+                    ]],
+                    $runId,
+                    'cover_gallery_url',
+                    'cover_gallery_id',
+                    'cover_gallery_alt'
+                );
+            }
             if ($this->stringValue($course['google_forms_link'] ?? '') !== '') {
                 $this->map($runId, 'sn_cursos', $courseId . ':google-form', LegacyMigrationCatalog::TARGET_CMS, 'external_link', (string) $entryId, LegacyMigrationCatalog::MAP_MAPPED, 'registration URL kept in curso_ficha');
             }
@@ -800,7 +825,7 @@ final class LegacyApplyService
                 continue;
             }
             $galleryItemBlockId = $this->blockTypes['gallery_item'] ?? throw new \RuntimeException('CMS block type gallery_item is not configured.');
-            $sortOrder = (int) ($image['escuela_img_posicion'] ?? $image['id_slider'] ?? $imageId);
+            $sortOrder = (int) ($image['sort_position'] ?? $image['escuela_img_posicion'] ?? $image['id_slider'] ?? $imageId);
             $recoveredBlockId = $this->findCmsBlock($entryId, $galleryItemBlockId, $parentId, $sortOrder, $fileId);
             if ($recoveredBlockId !== null) {
                 $this->map($runId, $this->imageTable($legacyTable), $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', (string) $recoveredBlockId, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic gallery item lookup');
@@ -1140,6 +1165,12 @@ final class LegacyApplyService
         return match ($ownerTable) {
             'sn_obra' => 'sn_slider_cartelera',
             'sn_slider' => 'sn_slider', // festival galleries: own id space, not sn_escuela_img's.
+            // sn_cursos ("Cursos Actuales") has no separate image table of its own — its only
+            // image at all is its own cover (image_cover), synthesized into a one-item gallery
+            // by applyCurrentCourses(). Map to itself so assetFile()'s (legacyTable, legacyId)
+            // lookup for that synthetic gallery item lands on the exact same map row as the
+            // cover's own file upload, reusing it instead of uploading a duplicate.
+            'sn_cursos' => 'sn_cursos',
             default => 'sn_escuela_img',
         };
     }
