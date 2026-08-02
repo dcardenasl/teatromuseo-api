@@ -130,8 +130,11 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertNull($repository->findMap('sn_obra', '9002', LegacyMigrationCatalog::TARGET_CMS, 'entry'));
     }
 
-    public function testSliceBSecondPassReusesCourseTeacherAndSupplementalMapping(): void
+    public function testSliceBSecondPassReusesHistoricalAndCurrentCourseEntriesIndependently(): void
     {
+        // sn_escuela (Cursos Históricos) and sn_cursos (Cursos Actuales) are independent
+        // legacy tables that happen to share the numeric id '25' by coincidence — they must
+        // become two distinct CMS entries, never merged. See applyCourses()'s docblock.
         $hash = hash('sha256', 'legacy-course-fixture');
         $tables = [
             'sn_escuela' => [
@@ -147,7 +150,7 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
                 ],
             ],
             'sn_cursos' => [
-                ['id' => '25', 'title' => 'Taller Fixture Actualizado', 'description_text' => 'Descripción suplementaria'],
+                ['id' => '25', 'title' => 'Taller Fixture Actualizado', 'description_text' => 'Descripción suplementaria', 'category_id' => '3', 'date_start' => '2027-01-10', 'date_end' => '2027-01-20'],
             ],
             'sn_escuela_img' => [],
             'sn_profesor' => [
@@ -169,15 +172,27 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $second = $service->apply('B', $tables, '/tmp/course-fixture.sql', $secondRun);
         $repository->finishRun($secondRun, LegacyMigrationCatalog::RUN_COMPLETED, $second);
 
-        $this->assertSame(2, $first['created']['cms_entries']);
+        // sn_escuela course + sn_profesor teacher + sn_cursos course, all as separate entries.
+        $this->assertSame(3, $first['created']['cms_entries']);
         $this->assertSame(0, $first['created']['events']);
         $this->assertSame(0, $second['created']['cms_entries']);
-        $this->assertSame(2, $second['reused']['cms_entries']);
+        $this->assertSame(3, $second['reused']['cms_entries']);
         $this->assertSame(0, $client->postCount('/events/events'));
-        $this->assertSame(
-            LegacyMigrationCatalog::MAP_SUPPLEMENTAL,
-            $repository->findMap('sn_cursos', '25', LegacyMigrationCatalog::TARGET_CMS, 'entry')['status']
-        );
+
+        $historicalEntryId = (int) $repository->findMap('sn_escuela', '25', LegacyMigrationCatalog::TARGET_CMS, 'entry')['target_id'];
+        $currentEntryId = (int) $repository->findMap('sn_cursos', '25', LegacyMigrationCatalog::TARGET_CMS, 'entry')['target_id'];
+        $this->assertNotSame($historicalEntryId, $currentEntryId);
+
+        $payloads = $client->payloads('/cms/entries');
+        $titlesById = [];
+        foreach ($payloads as $index => $payload) {
+            $titlesById[100 + $index] = $payload['translations'][0]['title'] ?? null;
+        }
+        // The historical entry keeps its own sn_escuela title — never the coincidentally
+        // id-matched sn_cursos title.
+        $this->assertSame('Taller Fixture', $titlesById[$historicalEntryId] ?? null);
+        // The current-course entry keeps its own sn_cursos title.
+        $this->assertSame('Taller Fixture Actualizado', $titlesById[$currentEntryId] ?? null);
     }
 
     public function testSliceBMigratesMoreThanThreeCoursesAndMoreThanTwentyTeachers(): void
@@ -208,25 +223,26 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame(30, $summary['created']['cms_entries']); // 5 courses + 25 teachers
     }
 
-    public function testCourseFallsBackToBaseTitleWhenSupplementTitleIsDuplicatedAcrossCourses(): void
+    public function testHistoricalCoursesNeverInheritDataFromCoincidentallyIdMatchedCurrentCourses(): void
     {
-        // Reproduces a real legacy data bug found 2026-08-02: 7 sn_cursos rows carry a
-        // stale/copy-pasted title shared verbatim across several unrelated courses (e.g. 5
-        // different courses all titled "Súbete al Escenario" in the supplement, each with
-        // its own correct, distinct sn_escuela.curso_titulo). A supplement title used by
-        // only one course is trustworthy and still wins; one reused across several courses
-        // in the same slice is treated as a duplication bug, not a real shared name.
-        $hash = hash('sha256', 'legacy-course-duplicate-title-fixture');
+        // Root cause found 2026-08-02 (superseding the old LEGACY-MAP-030 "duplicate title"
+        // patch, which only masked a symptom): sn_escuela ("Cursos Históricos") and sn_cursos
+        // ("Cursos Actuales") are independent legacy tables with no real relationship — proven
+        // by checking all 20 id-coincidental pairs, every one with mismatched dates (often a
+        // 5-year gap) and unrelated titles/topics. sn_cursos rows sharing a title across
+        // several ids (e.g. 5 different current courses all titled "Súbete al Escenario") is
+        // just real duplicate legacy content, not a migration bug — each still becomes its own
+        // entry with its own id-disambiguated slug. The sn_escuela rows must never read title,
+        // description, cover, or any other field from sn_cursos, regardless of any of this.
+        $hash = hash('sha256', 'legacy-course-independence-fixture');
         $tables = [
             'sn_escuela' => [
-                ['curso_id' => '9501', 'curso_titulo' => 'The Logic of Movement', 'curso_descripcion' => 'Desc'],
-                ['curso_id' => '9502', 'curso_titulo' => 'La Divina Escuela de Bufones', 'curso_descripcion' => 'Desc'],
-                ['curso_id' => '9503', 'curso_titulo' => 'Curso Sin Duplicado', 'curso_descripcion' => 'Desc'],
+                ['curso_id' => '9501', 'curso_titulo' => 'The Logic of Movement', 'curso_descripcion' => 'Desc histórica'],
+                ['curso_id' => '9502', 'curso_titulo' => 'La Divina Escuela de Bufones', 'curso_descripcion' => 'Desc histórica'],
             ],
             'sn_cursos' => [
-                ['id' => '9501', 'title' => 'Súbete al Escenario'],
-                ['id' => '9502', 'title' => 'Súbete al Escenario'],
-                ['id' => '9503', 'title' => 'Título Único Confiable'],
+                ['id' => '9501', 'title' => 'Súbete al Escenario', 'description_text' => 'Desc actual', 'category_id' => '', 'date_start' => '2027-01-10', 'date_end' => '2027-01-20'],
+                ['id' => '9502', 'title' => 'Súbete al Escenario', 'description_text' => 'Desc actual', 'category_id' => '', 'date_start' => '2027-02-10', 'date_end' => '2027-02-20'],
             ],
             'sn_escuela_img' => [],
             'sn_profesor' => [],
@@ -235,22 +251,28 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $client = new LegacyApplyRecordingClient();
         $repository = new LegacyMigrationRepository($this->db);
         $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
-        $runId = $repository->createRun('legacy-course-duplicate-title-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-duplicate-title-fixture.sql', $hash);
+        $runId = $repository->createRun('legacy-course-independence-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-independence-fixture.sql', $hash);
 
-        $service->apply('B', $tables, '/tmp/course-duplicate-title-fixture.sql', $runId);
+        $summary = $service->apply('B', $tables, '/tmp/course-independence-fixture.sql', $runId);
+
+        // 2 historical entries + 2 current entries, all independent (real duplicate content
+        // among the current courses does not collapse them into fewer entries).
+        $this->assertSame(4, $summary['created']['cms_entries']);
 
         $payloads = $client->payloads('/cms/entries');
-        $titlesByCourse = [];
-        foreach ($payloads as $payload) {
-            $titlesByCourse[] = $payload['translations'][0]['title'] ?? null;
-        }
+        $titles = array_map(static fn (array $payload): ?string => $payload['translations'][0]['title'] ?? null, $payloads);
+        $slugs = array_map(static fn (array $payload): ?string => $payload['translations'][0]['slug'] ?? null, $payloads);
 
-        // Duplicated supplement title: falls back to the reliable, distinct base title.
-        $this->assertContains('The Logic of Movement', $titlesByCourse);
-        $this->assertContains('La Divina Escuela de Bufones', $titlesByCourse);
-        $this->assertNotContains('Súbete al Escenario', $titlesByCourse);
-        // Unique (non-duplicated) supplement title: still preferred, as before.
-        $this->assertContains('Título Único Confiable', $titlesByCourse);
+        $this->assertContains('The Logic of Movement', $titles);
+        $this->assertContains('La Divina Escuela de Bufones', $titles);
+        $this->assertSame(2, count(array_filter($titles, static fn (?string $title): bool => $title === 'Súbete al Escenario')));
+        // Both current-course entries share the same title but must not collide on slug.
+        $this->assertSame(count(array_unique($slugs)), count($slugs));
+
+        $this->assertSame(
+            LegacyMigrationCatalog::MAP_MAPPED,
+            $repository->findMap('sn_cursos', '9501', LegacyMigrationCatalog::TARGET_CMS, 'entry')['status']
+        );
     }
 
     public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void

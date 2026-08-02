@@ -15,6 +15,58 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-031 — sn_cursos y sn_escuela son tablas independientes, no
+  base+suplemento (supera a LEGACY-MAP-030) (2026-08-02):** David pidió comparar
+  http://localhost:8184/es/cursos contra la base legacy y reportó que las portadas puestas por
+  LEGACY-MAP-029 "no coinciden"; luego confirmó explícitamente: *"los id de escuela y los de
+  cursos aunque sean el mismo no coinciden con ser el mismo curso"*. Investigación exhaustiva:
+  se cruzaron los 20 pares con id coincidente entre `sn_escuela.curso_id` y `sn_cursos.id` —
+  **100% de mismatch de fechas** (`sn_escuela` 2017-2021 vs `sn_cursos` 2024-2026, brechas de
+  hasta 5 años) y títulos/temas sin relación. `sn_cursos` no tiene ninguna columna FK hacia
+  `sn_escuela` (`CREATE TABLE` confirmado: `id, title, image_cover, date_start, date_end,
+  description_text, pdf_file, google_forms_link, contact_email, youtube_video_link, display,
+  category_id` — sin `curso_id`/`escuela_id`). Son dos sistemas legacy independientes que
+  reflejan el propio menú del sitio real: `sn_escuela` = "Cursos Históricos" (53 filas),
+  `sn_cursos` = "Cursos Actuales" (20 filas, confirmado 1:1 contra
+  `https://teatromuseo.cl/teatroescuela` → "Items encontrados: 20"). El id numérico compartido
+  (ambas tablas usan el rango 25-44) es coincidencia de dos auto-increments independientes. El
+  fix de LEGACY-MAP-030 (detectar título duplicado) solo tapó el síntoma para 7 de los 20 casos
+  con id coincidente — los otros 13 tenían título/portada/descripción igual de mal atribuidos,
+  solo que sin duplicarse, así que la heurística de duplicados no los detectaba.
+  - **Fix en el ETL (`LegacyApplyService::applyCourses()`):** eliminado por completo el join
+    falso por id. `sn_escuela` ahora usa únicamente sus propios campos (título, descripción,
+    fechas, portada — nunca toca `sn_cursos`). Nuevo método privado `applyCurrentCourses()`
+    migra las 20 filas de `sn_cursos` como sus propias entradas CMS independientes en la misma
+    colección `cursos`, con `legacy_table='sn_cursos'` como fuente primaria (no suplemento) —
+    slug derivado de `slug(title) . '-c' . id` para evitar colisión entre cursos con título
+    real duplicado (ej. 3 cursos "Súbete al Escenario" distintos). Reusa el mismo lookup de
+    `sn_categoria_escuela` (confirmado: mismo catálogo de categorías para ambas tablas —
+    1=Nacional, 2=Internacional, 3=Para Niños).
+  - **Corrección de datos en vivo:** los 19 entries de `sn_escuela` ya contaminados (título,
+    excerpt y portada tomados del `sn_cursos` mal emparejado por id) corregidos vía `PUT
+    /cms/entries/{id}` — título y descripción restaurados a los campos propios de `sn_escuela`,
+    portada puesta en null (4 idiomas c/u). Los 19 mapeos obsoletos
+    `sn_cursos→entry(status=supplemental)` en `legacy_migration_map` borrados (si no,
+    `applyCmsEntry()` habría reusado la entrada incorrecta en vez de crear una nueva). Re-corrido
+    `legacy:apply --slice B --confirm`: 20 `cms_entries` creados (las 20 entradas nuevas de
+    `sn_cursos`), 103 reusados, 1 archivo nuevo. Las 20 entradas nuevas se crean en `draft` por
+    diseño de `applyCmsEntry()` — publicadas manualmente vía `PUT` (`workflow_status=published`)
+    tras confirmar contenido; caché de `teatromuseo-web` invalidada (`POST /cache/invalidate`).
+  - **Verificado:** `composer quality` ✅ (693 tests, 2 skips preexistentes) tras reescribir 2
+    tests de `LegacyApplyServiceTest` (`testSliceBSecondPassReusesHistoricalAndCurrentCourseEntriesIndependently`,
+    `testHistoricalCoursesNeverInheritDataFromCoincidentallyIdMatchedCurrentCourses`) que
+    prueban que ambas tablas se migran sin cruzarse y que un título real duplicado dentro de
+    `sn_cursos` no colisiona de slug. En vivo: verificado en `localhost:8184/es/cursos` (grid +
+    detalle) que las 20 entradas actuales muestran su propio título/fecha/categoría/portada, y
+    que las 53 históricas ya no tienen datos de `sn_cursos` — cruzado un curso actual
+    ("El que la sigue... La consigue - Creaciones 2026", fecha 2026-08-04, categoría Nacional)
+    contra `https://teatromuseo.cl/teatroescuela` en vivo, coincidencia exacta.
+  - **Nota de proceso:** durante la corrida se agotó el rate limit del hub
+    (`API_KEY_RATE_LIMIT_DEFAULT`, 600/60s) por el volumen de resolución de `featured_image` en
+    un listado sin filtrar de +300 entries — subido temporalmente a 6000 solo para la corrida
+    (revertido a 600 después). Considerar si `GET /cms/entries` sin filtro debería paginar la
+    resolución de imágenes en vez de resolverlas todas de una vez.
+
 - **LEGACY-MAP-030 — Título duplicado entre cursos distintos (bug de datos legacy, no de
   migración) (2026-08-02):** David reportó ver "galerías que no corresponden" en cursos —
   imágenes de un curso apareciendo bajo el nombre de otro. Investigación: las galerías

@@ -230,32 +230,30 @@ final class LegacyApplyService
         }
     }
 
-    /** @param array<string, list<array<string, mixed>>> $tables */
+    /**
+     * `sn_escuela` (~53 rows, "Cursos Históricos", dates 2017-2021) and `sn_cursos`
+     * (20 rows, "Cursos Actuales", dates 2024-2026) are two INDEPENDENT legacy tables
+     * — not a base+supplement pair. `sn_cursos` has no foreign key column into
+     * `sn_escuela` at all; the overlapping numeric id ranges (both happen to include
+     * 25-44) are pure coincidence between two unrelated auto-increment counters.
+     * Confirmed exhaustively 2026-08-02: every one of the 20 id-coincidental pairs has
+     * mismatched dates (often a 5-year gap) and unrelated titles/topics — David
+     * independently confirmed the same ("los id de escuela y los de cursos aunque sean
+     * el mismo no coinciden con ser el mismo curso"). A prior fix here (LEGACY-MAP-030)
+     * treated `sn_cursos` as a "supplement" keyed by `sn_escuela.curso_id` and pulled
+     * title/description/cover/pdf/registration-link/video from the coincidentally
+     * id-matched `sn_cursos` row — that was wrong for all 20 matches, not just the 7
+     * where it produced an obviously-duplicated title. Each table is now migrated
+     * fully independently: `sn_escuela` rows use only their own fields (as below), and
+     * `sn_cursos` rows become their own separate CMS entries (see the loop after this
+     * one) in the same `cursos` collection.
+     *
+     * @param array<string, list<array<string, mixed>>> $tables
+     */
     private function applyCourses(array $tables, int $runId): void
     {
         $courses = $this->visibleRows($tables['sn_escuela'] ?? [], 'curso_display');
         usort($courses, fn (array $left, array $right): int => $this->numericId($left, 'curso_id') <=> $this->numericId($right, 'curso_id'));
-        $supplements = [];
-        foreach ($tables['sn_cursos'] ?? [] as $supplement) {
-            $id = $this->stringValue($supplement['id'] ?? '');
-            if ($id !== '') {
-                $supplements[$id] = $supplement;
-            }
-        }
-        // sn_cursos.title is normally the more complete, public-facing name and takes
-        // priority over sn_escuela.curso_titulo — but a handful of legacy rows carry a
-        // stale/copy-pasted title shared verbatim across several unrelated courses (e.g.
-        // 5 different courses all titled "Súbete al Escenario", confirmed against David
-        // 2026-08-02). A title only one course actually uses is trustworthy; one shared by
-        // several courses in the same dump is a duplication bug, not a real shared name —
-        // fall back to the reliable per-course sn_escuela.curso_titulo in that case.
-        $supplementTitleCounts = [];
-        foreach ($supplements as $supplement) {
-            $title = $this->stringValue($supplement['title'] ?? '');
-            if ($title !== '') {
-                $supplementTitleCounts[$title] = ($supplementTitleCounts[$title] ?? 0) + 1;
-            }
-        }
         $categoryTitles = [];
         foreach ($tables['sn_categoria_escuela'] ?? [] as $category) {
             $categoryId = $this->stringValue($category['id'] ?? '');
@@ -296,7 +294,6 @@ final class LegacyApplyService
             if ($courseId === '') {
                 continue;
             }
-            $supplement = $supplements[$courseId] ?? [];
             $key = $this->courseKey($course);
             $instructorIds = [];
             foreach ($this->visibleRows($tables['sn_profesor'] ?? [], 'profesor_display') as $teacher) {
@@ -307,21 +304,13 @@ final class LegacyApplyService
                     }
                 }
             }
-            $courseTitle = $this->stringValue($supplement['title'] ?? '');
-            if ($courseTitle === '' || ($supplementTitleCounts[$courseTitle] ?? 0) > 1) {
-                $courseTitle = $this->stringValue($course['curso_titulo'] ?? 'Curso');
-            }
-            $courseDescription = $this->stringValue($supplement['description_text'] ?? '');
-            if ($courseDescription === '') {
-                $courseDescription = $this->stringValue($course['curso_descripcion'] ?? '');
-            }
             $entryId = $this->applyCmsEntry(
                 'sn_escuela',
                 $courseId,
                 'cursos',
                 $key,
-                $courseTitle,
-                $courseDescription,
+                $this->stringValue($course['curso_titulo'] ?? 'Curso'),
+                $this->stringValue($course['curso_descripcion'] ?? ''),
                 [
                     'category' => $categoryTitles[$this->stringValue($course['curso_categoria'] ?? '')] ?? '',
                     'modality' => 'presencial',
@@ -338,12 +327,8 @@ final class LegacyApplyService
                     'objectives' => $this->stringValue($course['curso_objetivo'] ?? ''),
                     'history' => $this->stringValue($course['curso_historia'] ?? ''),
                     'instructors' => $instructorIds,
-                    'registration_url' => $this->stringValue($supplement['google_forms_link'] ?? ''),
-                    'contact_email' => $this->stringValue($supplement['contact_email'] ?? ''),
-                    'video_url' => $this->stringValue($supplement['youtube_video_link'] ?? ''),
                 ],
-                $runId,
-                $this->assetFile('sn_cursos', $courseId, $supplement['image_cover'] ?? null, 'curso-' . $courseId, $runId)
+                $runId
             );
             foreach ($instructorIds as $instructor) {
                 $teacherEntryId = (string) $instructor['entry_id'];
@@ -352,27 +337,67 @@ final class LegacyApplyService
                     $this->map($runId, 'sn_profesor', $teacherSourceId . ':course:' . $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry_reference', $teacherEntryId, LegacyMigrationCatalog::MAP_MAPPED, 'course instructor relation');
                 }
             }
-            if (isset($supplements[$courseId])) {
-                $this->map($runId, 'sn_cursos', $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry', (string) $entryId, LegacyMigrationCatalog::MAP_SUPPLEMENTAL, 'supplemental course source');
-                if ($this->stringValue($supplement['google_forms_link'] ?? '') !== '') {
-                    $this->map($runId, 'sn_cursos', $courseId . ':google-form', LegacyMigrationCatalog::TARGET_CMS, 'external_link', (string) $entryId, LegacyMigrationCatalog::MAP_MAPPED, 'registration URL kept in curso_ficha');
-                }
-                if ($this->stringValue($supplement['youtube_video_link'] ?? '') !== '') {
-                    $this->map($runId, 'sn_cursos', $courseId . ':youtube', LegacyMigrationCatalog::TARGET_CMS, 'video_reference', (string) $entryId, LegacyMigrationCatalog::MAP_MAPPED, 'video URL kept in curso_ficha');
-                }
-                if ($this->stringValue($supplement['pdf_file'] ?? '') !== '') {
-                    $fileId = $this->assetFile('sn_cursos', $courseId . ':pdf', $supplement['pdf_file'], 'curso-' . $courseId . '.pdf', $runId);
-                    if ($fileId !== null) {
-                        $this->createDocumentBlock('sn_cursos', $courseId . ':document', (int) $entryId, $fileId, $this->stringValue($supplement['title'] ?? 'Documento del curso'), $runId);
-                    }
-                }
-            }
 
             $images = array_values(array_filter(
                 $this->visibleRows($tables['sn_escuela_img'] ?? [], 'escuela_img_display'),
                 fn (array $image): bool => $this->stringValue($image['curso_id'] ?? '') === $courseId
             ));
             $this->applyGallery('sn_escuela', $courseId, (int) $entryId, $images, $runId, 'escuela_img_url', 'escuela_img_id', 'escuela_img_alt');
+        }
+
+        $this->applyCurrentCourses($tables, $runId, $categoryTitles);
+    }
+
+    /**
+     * `sn_cursos` ("Cursos Actuales") migrated as its own independent set of CMS
+     * entries in the shared `cursos` collection — see the docblock above
+     * applyCourses() for why this must never be merged into `sn_escuela` rows.
+     *
+     * @param array<string, list<array<string, mixed>>> $tables
+     * @param array<string, string> $categoryTitles
+     */
+    private function applyCurrentCourses(array $tables, int $runId, array $categoryTitles): void
+    {
+        $currentCourses = $this->visibleRows($tables['sn_cursos'] ?? [], 'display');
+        usort($currentCourses, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
+
+        foreach ($currentCourses as $course) {
+            $courseId = $this->stringValue($course['id'] ?? '');
+            if ($courseId === '') {
+                continue;
+            }
+            $title = $this->stringValue($course['title'] ?? 'Curso');
+            $entryId = $this->applyCmsEntry(
+                'sn_cursos',
+                $courseId,
+                'cursos',
+                $this->slug($title) . '-c' . $courseId,
+                $title,
+                $this->stringValue($course['description_text'] ?? ''),
+                [
+                    'category' => $categoryTitles[$this->stringValue($course['category_id'] ?? '')] ?? '',
+                    'modality' => 'presencial',
+                    'start_date' => $this->validDate($course['date_start'] ?? null) ? $this->stringValue($course['date_start']) : null,
+                    'end_date' => $this->validDate($course['date_end'] ?? null) ? $this->stringValue($course['date_end']) : null,
+                    'registration_url' => $this->stringValue($course['google_forms_link'] ?? ''),
+                    'contact_email' => $this->stringValue($course['contact_email'] ?? ''),
+                    'video_url' => $this->stringValue($course['youtube_video_link'] ?? ''),
+                ],
+                $runId,
+                $this->assetFile('sn_cursos', $courseId, $course['image_cover'] ?? null, 'curso-actual-' . $courseId, $runId)
+            );
+            if ($this->stringValue($course['google_forms_link'] ?? '') !== '') {
+                $this->map($runId, 'sn_cursos', $courseId . ':google-form', LegacyMigrationCatalog::TARGET_CMS, 'external_link', (string) $entryId, LegacyMigrationCatalog::MAP_MAPPED, 'registration URL kept in curso_ficha');
+            }
+            if ($this->stringValue($course['youtube_video_link'] ?? '') !== '') {
+                $this->map($runId, 'sn_cursos', $courseId . ':youtube', LegacyMigrationCatalog::TARGET_CMS, 'video_reference', (string) $entryId, LegacyMigrationCatalog::MAP_MAPPED, 'video URL kept in curso_ficha');
+            }
+            if ($this->stringValue($course['pdf_file'] ?? '') !== '') {
+                $fileId = $this->assetFile('sn_cursos', $courseId . ':pdf', $course['pdf_file'], 'curso-actual-' . $courseId . '.pdf', $runId);
+                if ($fileId !== null) {
+                    $this->createDocumentBlock('sn_cursos', $courseId . ':document', (int) $entryId, $fileId, $title, $runId);
+                }
+            }
         }
     }
 
