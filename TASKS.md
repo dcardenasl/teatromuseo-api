@@ -15,6 +15,19 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-029 — Portadas de cursos: assets nunca descargados al asset-root (2026-08-02):**
+  David pidió revisar qué había pasado con las portadas/galería de la colección `cursos` (0/48
+  con portada). A diferencia de LEGACY-MAP-028 (bug de código), aquí la causa fue de datos: los
+  20 `sn_cursos.image_cover` reales apuntaban a `/images/escuela/*.png|.JPG`, ausentes del
+  asset-root local (`teatromuseo_webapp_php/`) desde la preparación original (LEGACY-MAP-022)
+  — confirmado con `LegacyAssetResolver` contra el dump real (20/20 `status=missing`). Los 20
+  archivos seguían disponibles en `https://teatromuseo.cl/images/escuela/` (200 OK, verificado
+  uno por uno) — descargados con el mismo criterio de autorización que LEGACY-MAP-022. Re-corrida
+  `legacy:apply --slice B --confirm` contra cms-domain: portadas de cursos 0→19/48 (el resto
+  genuinamente no tiene `image_cover` en el dump — no un bug). Idempotencia confirmada con una
+  segunda corrida (0 archivos nuevos). El fix de orden de la colección (próximos primero, luego
+  descendente) se implementó en `teatromuseo-cms-domain` — ver su `TASKS.md` (CURSOS-001).
+
 - **LEGACY-MAP-028 — Portadas faltantes en obras/eventos: bug de reconciliación tras
   upload fallido (2026-08-01):** David preguntó si las imágenes de la Cartelera (portadas,
   galerías) estaban funcionando tras la publicación de LEGACY-MAP-027. Auditoría directa en BD
