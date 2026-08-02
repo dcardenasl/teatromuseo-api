@@ -342,7 +342,36 @@ final class LegacyApplyService
                 $this->visibleRows($tables['sn_escuela_img'] ?? [], 'escuela_img_display'),
                 fn (array $image): bool => $this->stringValue($image['curso_id'] ?? '') === $courseId
             ));
-            $this->applyGallery('sn_escuela', $courseId, (int) $entryId, $images, $runId, 'escuela_img_url', 'escuela_img_id', 'escuela_img_alt');
+            usort($images, function (array $left, array $right): int {
+                $leftPos = $left['escuela_img_posicion'] ?? null;
+                $rightPos = $right['escuela_img_posicion'] ?? null;
+                $leftHasPos = $leftPos !== null;
+                $rightHasPos = $rightPos !== null;
+                if ($leftHasPos !== $rightHasPos) {
+                    return $leftHasPos ? -1 : 1;
+                }
+                if ($leftHasPos && $rightHasPos) {
+                    $cmp = ((int) $leftPos) <=> ((int) $rightPos);
+                    if ($cmp !== 0) {
+                        return $cmp;
+                    }
+                }
+
+                return $this->numericId($left, 'escuela_img_id') <=> $this->numericId($right, 'escuela_img_id');
+            });
+            $galleryFileIds = $this->applyGallery('sn_escuela', $courseId, (int) $entryId, $images, $runId, 'escuela_img_url', 'escuela_img_id', 'escuela_img_alt');
+
+            // Rule (David, 2026-08-02): sn_escuela ("Cursos Históricos") has no cover field of
+            // its own in the legacy dump at all — the gallery is the only possible cover
+            // source. The cover is always a copy of the gallery's first image (by
+            // escuela_img_posicion, matching what the gallery actually displays first), never a
+            // one-time fallback — reconcileFeaturedImage() is idempotent (its own ':cover' map
+            // key), so re-running this every time keeps the cover in sync if the gallery's first
+            // image ever changes, and backfills it the first time a gallery is added to a course
+            // that was previously imageless.
+            if ($galleryFileIds !== []) {
+                $this->reconcileFeaturedImage('sn_escuela', $courseId, (int) $entryId, $galleryFileIds[0], $runId);
+            }
         }
 
         $this->applyCurrentCourses($tables, $runId, $categoryTitles);

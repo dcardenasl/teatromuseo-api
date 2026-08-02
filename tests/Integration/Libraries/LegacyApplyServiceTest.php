@@ -275,6 +275,72 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         );
     }
 
+    public function testCourseCoverIsCopiedFromFirstGalleryImageByDisplayPosition(): void
+    {
+        // Rule (David, 2026-08-02): sn_escuela ("Cursos Históricos") has no cover field of its
+        // own anywhere in the legacy dump — the gallery is the only possible cover source, so
+        // the entry's cover must always be a copy of the gallery's first image AS DISPLAYED
+        // (ordered by escuela_img_posicion), not whichever row happens to appear first in the
+        // dump. Deliberately lists the fixture rows out of display order below to prove the fix
+        // sorts before picking, rather than trusting array order.
+        $assetRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'teatromuseo-course-cover-fixture-' . bin2hex(random_bytes(8));
+        mkdir($assetRoot, 0755, true);
+        file_put_contents($assetRoot . '/course-gallery-second.jpg', 'position 5 image bytes');
+        file_put_contents($assetRoot . '/course-gallery-first.jpg', 'position 2 image bytes');
+
+        try {
+            $hash = hash('sha256', 'legacy-course-cover-from-gallery-fixture');
+            $tables = [
+                'sn_escuela' => [
+                    ['curso_id' => '9601', 'curso_titulo' => 'Curso Sin Portada Propia', 'curso_descripcion' => 'Desc'],
+                ],
+                'sn_cursos' => [],
+                'sn_escuela_img' => [
+                    // Row with the HIGHER position (5) listed first; the row with the LOWER
+                    // position (2) listed second.
+                    ['escuela_img_id' => '1', 'escuela_img_url' => 'course-gallery-second.jpg', 'escuela_img_alt' => 'Segunda', 'escuela_img_posicion' => '5', 'curso_id' => '9601'],
+                    ['escuela_img_id' => '2', 'escuela_img_url' => 'course-gallery-first.jpg', 'escuela_img_alt' => 'Primera', 'escuela_img_posicion' => '2', 'curso_id' => '9601'],
+                ],
+                'sn_profesor' => [],
+                'sn_categoria_escuela' => [],
+            ];
+
+            $resolver = new LegacyAssetResolver($assetRoot);
+            $client = new LegacyApplyRecordingClient();
+            $client->allowUploads = true;
+            $repository = new LegacyMigrationRepository($this->db);
+            $service = new LegacyApplyService($repository, $client, $client, $client, $resolver, $hash);
+            $runId = $repository->createRun('legacy-course-cover-from-gallery-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-cover-from-gallery-fixture.sql', $hash);
+
+            $service->apply('B', $tables, '/tmp/course-cover-from-gallery-fixture.sql', $runId);
+
+            $entryId = 100; // LegacyApplyRecordingClient mints CMS ids starting at 100.
+            $putPayloads = $client->payloads('/cms/entries/' . $entryId);
+            $this->assertCount(1, $putPayloads, 'expected exactly one PUT to attach the gallery-derived cover');
+            $coverFileId = $putPayloads[0]['translations'][0]['featured_image']['file_id'];
+
+            // course-gallery-first.jpg (position 2) must be uploaded first — and win as the
+            // cover — even though it's listed second in the fixture array; position 5's image
+            // uploads second and must NOT be picked as the cover.
+            $this->assertSame(900, $coverFileId);
+
+            // Re-running with the same inputs must not re-PUT — the ':cover' map row from the
+            // first run already points at file 900, so reconcileFeaturedImage() short-circuits
+            // before ever issuing a GET or PUT.
+            $secondClient = new LegacyApplyRecordingClient();
+            $secondClient->allowUploads = true;
+            $secondService = new LegacyApplyService($repository, $secondClient, $secondClient, $secondClient, $resolver, $hash);
+            $secondRun = $repository->createRun('legacy-course-cover-from-gallery-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-cover-from-gallery-fixture.sql', $hash);
+            $secondService->apply('B', $tables, '/tmp/course-cover-from-gallery-fixture.sql', $secondRun);
+
+            $this->assertCount(0, $secondClient->payloads('/cms/entries/' . $entryId), 'cover already correct, no PUT expected on rerun');
+        } finally {
+            @unlink($assetRoot . '/course-gallery-second.jpg');
+            @unlink($assetRoot . '/course-gallery-first.jpg');
+            @rmdir($assetRoot);
+        }
+    }
+
     public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void
     {
         $hash = hash('sha256', 'legacy-contact-fixture');

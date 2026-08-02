@@ -15,6 +15,35 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-032 — Regla: portada de curso histórico = copia de la primera imagen de su
+  galería (2026-08-02):** David revisó el paginador completo de `/es/cursos` (6 páginas) y
+  reportó varios cursos sin portada; pidió una regla robusta (no un parche puntual): la portada
+  de un curso siempre debe ser una copia de la primera imagen de su galería. Confirmado contra el
+  dump: `sn_escuela` ("Cursos Históricos") **no tiene ningún campo de portada propio** — la
+  galería es la única fuente posible. Diagnóstico previo: 48/68 entradas de cursos sin portada,
+  las 48 correspondían exactamente a las 48 entradas `sn_escuela`; de esas, 44 sí tenían galería
+  (arregladas por esta regla) y 4 no tenían ni portada ni galería (sin fuente de la cual copiar,
+  quedan igual).
+  - **Fix en el ETL (`LegacyApplyService::applyCourses()`):** las imágenes de
+    `sn_escuela_img` ahora se ordenan por `escuela_img_posicion` (con `escuela_img_id` como
+    desempate, nulls al final) **antes** de pasarlas a `applyGallery()` — necesario porque el
+    array de la tabla no viene en orden de visualización, y el bug original hubiera copiado
+    "el primer elemento del array" en vez de "el primer elemento como se muestra". Tras aplicar
+    la galería, si `applyGallery()` devolvió al menos un file id, se llama a
+    `reconcileFeaturedImage()` (mecanismo ya existente de LEGACY-MAP-028, con su propia clave de
+    mapeo `:cover` para idempotencia) con el primer file id — mismo patrón ya probado, no un
+    camino nuevo. Se ejecuta en cada corrida, no solo cuando falta portada: si la primera imagen
+    de la galería cambia alguna vez, la portada se resincroniza sola.
+  - **Verificado:** nuevo test
+    `testCourseCoverIsCopiedFromFirstGalleryImageByDisplayPosition` (13 tests en el archivo,
+    todos ✅) — construye deliberadamente la galería en orden inverso de posición para probar
+    que se ordena antes de elegir, y verifica que una segunda corrida no vuelve a hacer `PUT`.
+    `composer quality` ✅ (694 tests, 2 skips preexistentes). En vivo: `legacy:apply --slice B`
+    creó 44 archivos nuevos (0 entries nuevas, 123 reusadas) — cobertura de portadas en `cursos`
+    pasó de 20/68 a 64/68; los 4 restantes son exactamente los 4 sin galería (`Creación de
+    Números Cómicos y de Títeres` ×3, `Comicidad`), confirmados en vivo en la página 6 del
+    paginador.
+
 - **LEGACY-MAP-031 — sn_cursos y sn_escuela son tablas independientes, no
   base+suplemento (supera a LEGACY-MAP-030) (2026-08-02):** David pidió comparar
   http://localhost:8184/es/cursos contra la base legacy y reportó que las portadas puestas por
