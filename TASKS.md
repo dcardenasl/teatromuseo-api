@@ -51,14 +51,28 @@
   creados, 0 PUTs nuevos). Verificado visualmente en `http://localhost:8184/cartelera` —
   imágenes reales cargando desde el hub (200 OK, `image/jpeg`).
 
-  **Pendiente, fuera de alcance de este fix:** `events.gallery_file_ids` tiene el mismo problema
-  (0/381, la vista de galería del evento en el sitio público también queda vacía) — requiere
-  threading del listado de `file_id`s ya resueltos por `applyGallery()` hacia `applyEvent()` en
-  formato CSV, más su propia reconciliación. No implementado; pendiente de decisión.
+  **Tercer hallazgo, mismo día — David confirmó continuar con las galerías también:**
+  `events.gallery_file_ids` (columna CSV plana, sin equivalente de bloques CMS) tenía el mismo
+  problema: 0/381 eventos con galería, aunque las imágenes ya estaban resueltas y adjuntas como
+  bloques `gallery_item` en el lado CMS vía `applyGallery()`. A diferencia de la portada,
+  `applyEvent()` se ejecuta *antes* de que `applyGallery()` resuelva las imágenes de la obra, así
+  que nunca pudo setearse en el POST de creación — `applyGallery()` ahora retorna la lista de
+  `file_id`s que resolvió (antes era `void`; se reordenó para llamar `assetFile()` siempre,
+  incluso cuando el bloque `gallery_item` ya existía, en vez de saltarlo) y un nuevo
+  `reconcileEventGallery()` la adjunta vía PUT como CSV incondicionalmente después de cada
+  corrida (funciona tanto si el evento se acaba de crear como si se reusó), con su propio mapa
+  `:event-gallery` — si se agrega una imagen nueva en el legacy más adelante, el CSV cambia y se
+  re-sincroniza solo.
 
-  10 tests nuevos/extendidos en `LegacyApplyServiceTest.php` (reconciliación de entrada CMS +
-  reconciliación de evento en el mismo test de 3 corridas), `composer quality` ✅ (692 tests, 2
-  skips preexistentes).
+  **Resultados reales (misma corrida en vivo):** eventos con galería 0→261/381. Idempotencia
+  confirmada con una segunda corrida real (0 archivos nuevos, 0 PUTs nuevos). Verificado
+  visualmente en `http://localhost:8184/es/cartelera/la-ciscu-margaret-variete-de-payasos` —
+  portada + 2 imágenes de galería cargando desde el hub (200 OK, `image/jpeg`).
+
+  15 tests nuevos/extendidos en `LegacyApplyServiceTest.php` en total (reconciliación de entrada
+  CMS + portada de evento + galería de evento, las tres cubiertas en el mismo test de 3
+  corridas), `composer quality` ✅ (692 tests, 2 skips preexistentes, dos corridas separadas —
+  una por cada hallazgo).
 
 - **LEGACY-MAP-027 — Publicar el contenido migrado: draft/scheduled → published
   (2026-08-01):** Toda la migración legacy (022-026) creaba contenido en estado no-público por

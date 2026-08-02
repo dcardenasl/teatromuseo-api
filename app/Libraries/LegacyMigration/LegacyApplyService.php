@@ -189,7 +189,8 @@ final class LegacyApplyService
                 $this->visibleRows($tables['sn_slider_cartelera'] ?? [], 'display'),
                 fn (array $image): bool => isset($groupIds[$this->stringValue($image['id_obra'] ?? '')])
             ));
-            $this->applyGallery('sn_obra', $canonicalId, (int) $entryId, $images, $runId, 'url_sl', 'id_slider', 'alt_text');
+            $galleryFileIds = $this->applyGallery('sn_obra', $canonicalId, (int) $entryId, $images, $runId, 'url_sl', 'id_slider', 'alt_text');
+            $this->reconcileEventGallery($canonicalId, $eventId, $galleryFileIds, $runId);
         }
 
         $videoGroups = [];
@@ -584,6 +585,32 @@ final class LegacyApplyService
         $this->map($runId, 'sn_obra', $legacyId . ':event-cover', LegacyMigrationCatalog::TARGET_EVENT, 'cover', (string) $featuredFileId, LegacyMigrationCatalog::MAP_MAPPED, 'event cover reconciled after asset became available');
     }
 
+    /**
+     * Same gap as reconcileEventCover(), for the gallery: events.gallery_file_ids is a plain
+     * CSV column (see FileUsageService's parseCsvIds()) with no CMS-block equivalent of its
+     * own, and applyEvent()'s create call happens before applyGallery() ever resolves the
+     * gallery images for this work — so it can never be set at create time. Always reconciled
+     * post-hoc instead (works whether the event was just created or reused this run), keyed by
+     * the resolved CSV so a newly-added legacy gallery image re-syncs on a later run too.
+     *
+     * @param list<int> $fileIds
+     */
+    private function reconcileEventGallery(string $legacyId, int $eventId, array $fileIds, int $runId): void
+    {
+        if ($fileIds === []) {
+            return;
+        }
+
+        $csv = implode(',', $fileIds);
+        $galleryMap = $this->repository->findMap('sn_obra', $legacyId . ':event-gallery', LegacyMigrationCatalog::TARGET_EVENT, 'gallery');
+        if ($galleryMap !== null && ($galleryMap['target_id'] ?? null) === $csv) {
+            return;
+        }
+
+        $this->event->put('/events/events/' . $eventId, ['gallery_file_ids' => $csv]);
+        $this->map($runId, 'sn_obra', $legacyId . ':event-gallery', LegacyMigrationCatalog::TARGET_EVENT, 'gallery', $csv, LegacyMigrationCatalog::MAP_MAPPED, 'event gallery reconciled from CMS gallery items');
+    }
+
     private function ensureEventReference(int $eventId, int $entryId, string $legacyId, int $runId): void
     {
         $referenceKey = $legacyId . ':reference:' . $entryId;
@@ -646,11 +673,16 @@ final class LegacyApplyService
         $this->summary['created']['occurrences']++;
     }
 
-    /** @param list<array<string, mixed>> $images */
-    private function applyGallery(string $legacyTable, string $legacyId, int $entryId, array $images, int $runId, string $pathField, string $idField, string $altField): void
+    /**
+     * @param list<array<string, mixed>> $images
+     * @return list<int> hub file ids resolved for these images, in image order — callers that
+     *                    also mirror the gallery onto an event-domain record (events.gallery_file_ids
+     *                    has no CMS-block concept of its own) use this instead of re-resolving.
+     */
+    private function applyGallery(string $legacyTable, string $legacyId, int $entryId, array $images, int $runId, string $pathField, string $idField, string $altField): array
     {
         if ($images === []) {
-            return;
+            return [];
         }
         $parentMap = $this->repository->findMap($legacyTable, $legacyId . ':gallery', LegacyMigrationCatalog::TARGET_CMS, 'gallery');
         $parentId = $this->positiveId($parentMap['target_id'] ?? null);
@@ -681,17 +713,21 @@ final class LegacyApplyService
             $this->summary['reused']['blocks']++;
         }
 
+        $galleryFileIds = [];
         foreach ($images as $image) {
             $imageId = $this->stringValue($image[$idField] ?? '');
             if ($imageId === '') {
                 continue;
+            }
+            $fileId = $this->assetFile($this->imageTable($legacyTable), $imageId, $image[$pathField] ?? null, 'gallery-' . $imageId, $runId);
+            if ($fileId !== null) {
+                $galleryFileIds[] = $fileId;
             }
             $mapped = $this->repository->findMap($this->imageTable($legacyTable), $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item');
             if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
                 $this->summary['reused']['blocks']++;
                 continue;
             }
-            $fileId = $this->assetFile($this->imageTable($legacyTable), $imageId, $image[$pathField] ?? null, 'gallery-' . $imageId, $runId);
             if ($fileId === null) {
                 continue;
             }
@@ -727,6 +763,8 @@ final class LegacyApplyService
             $this->map($runId, $this->imageTable($legacyTable), $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', (string) $blockId, LegacyMigrationCatalog::MAP_MAPPED, 'gallery item block');
             $this->summary['created']['blocks']++;
         }
+
+        return $galleryFileIds;
     }
 
     private function createDocumentBlock(string $legacyTable, string $legacyId, int $entryId, int $fileId, string $title, int $runId): void

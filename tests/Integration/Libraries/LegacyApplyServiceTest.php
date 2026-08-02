@@ -414,20 +414,22 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
 
     public function testReconcilesFeaturedImageOnceAssetBecomesAvailableInALaterRun(): void
     {
-        // Reproduces the real LEGACY-MAP-024 gap: an entry (and its paired event — the public
-        // Cartelera listing reads events.cover_file_id, not the CMS entry's featured_image) is
-        // created successfully while its cover upload fails (rate limit, transient error). A
-        // later run must retroactively attach the cover to both once the asset resolves,
-        // without duplicating either, and must not re-PUT once the cover is already correct.
+        // Reproduces the real LEGACY-MAP-024/028 gap: an entry (and its paired event — the
+        // public Cartelera listing reads events.cover_file_id/gallery_file_ids directly, not
+        // the CMS entry's featured_image/gallery_item blocks) is created successfully while its
+        // cover and gallery uploads fail (rate limit, transient error). A later run must
+        // retroactively attach both to the entry and the event once the assets resolve, without
+        // duplicating either, and must not re-PUT once everything is already correct.
         $assetRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'teatromuseo-cover-fixture-' . bin2hex(random_bytes(8));
         mkdir($assetRoot, 0755, true);
         file_put_contents($assetRoot . '/obra-fixture.jpg', 'fixture image bytes');
+        file_put_contents($assetRoot . '/gallery-fixture.jpg', 'fixture gallery bytes');
 
         try {
             $hash = hash('sha256', 'legacy-cover-reconcile-fixture');
             // legacy_migration_map isn't rolled back between tests in this file (see
-            // testWorksAndCompaniesScaleWithoutHardcodedCaps) — id_obra must be unique across
-            // the whole class, not just this test.
+            // testWorksAndCompaniesScaleWithoutHardcodedCaps) — id_obra/id_slider must be
+            // unique across the whole class, not just this test.
             $tables = [
                 'sn_obra' => [
                     [
@@ -445,6 +447,9 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
                         'display' => '1',
                     ],
                 ],
+                'sn_slider_cartelera' => [
+                    ['id_slider' => '95001', 'id_obra' => '95001', 'url_sl' => 'gallery-fixture.jpg', 'alt_text' => 'Gallery Fixture', 'display' => '1'],
+                ],
             ];
             $repository = new LegacyMigrationRepository($this->db);
             $entryId = 100; // LegacyApplyRecordingClient mints CMS ids starting at 100.
@@ -461,6 +466,7 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
             $this->assertSame(1, $first['created']['cms_entries']);
             $this->assertSame(1, $first['created']['events']);
             $this->assertNull($firstClient->payloads('/events/events')[0]['cover_file_id']);
+            $this->assertCount(0, $firstClient->payloads('/events/events/' . $eventId), 'no gallery asset resolved yet, so no PUT expected');
 
             // Run 2: the asset now resolves and the upload succeeds. The entry already exists
             // (found via the control-plane map), so it must reach reconcileFeaturedImage()
@@ -483,9 +489,13 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
             $this->assertCount(1, $putPayloads, 'expected exactly one PUT to attach the now-available cover');
             $this->assertSame(900, $putPayloads[0]['translations'][0]['featured_image']['file_id']);
 
+            // The cover asset (obra-fixture.jpg) resolves first (before the CMS entry is
+            // built), so it claims file id 900; the gallery image (gallery-fixture.jpg)
+            // resolves afterwards inside applyGallery() and claims 901.
             $eventPutPayloads = $secondClient->payloads('/events/events/' . $eventId);
-            $this->assertCount(1, $eventPutPayloads, 'expected exactly one PUT to attach the now-available event cover');
+            $this->assertCount(2, $eventPutPayloads, 'expected one PUT for the event cover and one for its gallery');
             $this->assertSame(['cover_file_id' => 900], $eventPutPayloads[0]);
+            $this->assertSame(['gallery_file_ids' => '901'], $eventPutPayloads[1]);
 
             // Run 3: identical inputs again — the cover is already correct, so no further PUT.
             $thirdClient = new LegacyApplyRecordingClient();
@@ -546,6 +556,12 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
             return ['data' => ['items' => [
                 ['id' => 1000 + (int) $matches[1], 'block_id' => 13, 'parent_instance_id' => 0],
             ]]];
+        }
+
+        // applyGallery()'s findCmsBlock() lookup for an entry-owned gallery container —
+        // no fixture entry pre-seeds one, so it's always empty (forces the create path).
+        if (preg_match('#^/cms/entries/(\d+)/blocks$#', $path) === 1) {
+            return ['data' => ['items' => []]];
         }
 
         if (preg_match('#^/cms/entries/(\d+)$#', $path, $matches) === 1) {
