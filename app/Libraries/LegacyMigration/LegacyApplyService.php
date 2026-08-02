@@ -242,6 +242,20 @@ final class LegacyApplyService
                 $supplements[$id] = $supplement;
             }
         }
+        // sn_cursos.title is normally the more complete, public-facing name and takes
+        // priority over sn_escuela.curso_titulo — but a handful of legacy rows carry a
+        // stale/copy-pasted title shared verbatim across several unrelated courses (e.g.
+        // 5 different courses all titled "Súbete al Escenario", confirmed against David
+        // 2026-08-02). A title only one course actually uses is trustworthy; one shared by
+        // several courses in the same dump is a duplication bug, not a real shared name —
+        // fall back to the reliable per-course sn_escuela.curso_titulo in that case.
+        $supplementTitleCounts = [];
+        foreach ($supplements as $supplement) {
+            $title = $this->stringValue($supplement['title'] ?? '');
+            if ($title !== '') {
+                $supplementTitleCounts[$title] = ($supplementTitleCounts[$title] ?? 0) + 1;
+            }
+        }
         $categoryTitles = [];
         foreach ($tables['sn_categoria_escuela'] ?? [] as $category) {
             $categoryId = $this->stringValue($category['id'] ?? '');
@@ -294,7 +308,7 @@ final class LegacyApplyService
                 }
             }
             $courseTitle = $this->stringValue($supplement['title'] ?? '');
-            if ($courseTitle === '') {
+            if ($courseTitle === '' || ($supplementTitleCounts[$courseTitle] ?? 0) > 1) {
                 $courseTitle = $this->stringValue($course['curso_titulo'] ?? 'Curso');
             }
             $courseDescription = $this->stringValue($supplement['description_text'] ?? '');

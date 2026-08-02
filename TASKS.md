@@ -15,6 +15,35 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-030 — Título duplicado entre cursos distintos (bug de datos legacy, no de
+  migración) (2026-08-02):** David reportó ver "galerías que no corresponden" en cursos —
+  imágenes de un curso apareciendo bajo el nombre de otro. Investigación: las galerías
+  estaban correctamente vinculadas (verificado cruzando `sn_escuela_img.curso_id` contra el
+  dump real — cada imagen pertenece a un solo curso, sin colisión). El problema real: 7 filas
+  de `sn_cursos` (la tabla suplementaria, normalmente más confiable que `sn_escuela.curso_titulo`
+  para el título público) tienen un título repetido literalmente entre varios cursos distintos
+  — 5 cursos comparten "Súbete al Escenario" (curso_id 25/27/32/36/40, cada uno con su propio
+  `curso_titulo` correcto: "The Logic of Movement", "La Divina Escuela de Bufones", "El Desvelo
+  II", "Taller de Autómatas", "La Ventana Mágica") y 2 comparten "La Escuela de los Nuevos
+  Comediantes" (curso_id 34 —no visible, `curso_display=0`, sin impacto real— y 41,
+  "Arquetipos de los Cómicos"). Con el mismo título repetido y galerías/fechas distintas, se
+  leía como si las imágenes estuvieran "cruzadas" entre cursos.
+  - **Fix en el ETL:** `applyCourses()` ahora cuenta cuántos cursos distintos comparten el
+    mismo `sn_cursos.title` antes de usarlo; si es 1, se usa (como antes, sigue siendo más
+    confiable que `curso_titulo` en general); si es 2+, se descarta como duplicación y se usa
+    el `curso_titulo` de `sn_escuela`, específico por curso. Corre a prueba de un futuro
+    refresh del dump — no depende de una lista de excepciones hardcodeada.
+  - **Corrección en vivo:** los 6 cursos ya migrados con título incorrecto (curso_id 34 no
+    aplica, nunca se migró) corregidos vía `PUT /cms/entries/{id}` (título en los 4 idiomas —
+    el ETL nunca tradujo de verdad, solo replicó el mismo string). `legacy:apply --slice B`
+    re-corrido después: 0 creados, todo reusado, confirmado que los títulos corregidos
+    persisten (las rutas de reuso del ETL no tocan el título, por diseño — la única vía para
+    corregirlos ya migrados es una corrección directa).
+  - **Verificado:** nuevo test `testCourseFallsBackToBaseTitleWhenSupplementTitleIsDuplicatedAcrossCourses`
+    (12 tests en el archivo, todos ✅), `composer quality` ✅ (693 tests, 2 skips
+    preexistentes). En vivo: 0 cursos con título "Súbete al Escenario" a secas, los 6 títulos
+    corregidos presentes y verificados uno por uno vía la API pública.
+
 - **LEGACY-MAP-029 — Portadas de cursos: assets nunca descargados al asset-root (2026-08-02):**
   David pidió revisar qué había pasado con las portadas/galería de la colección `cursos` (0/48
   con portada). A diferencia de LEGACY-MAP-028 (bug de código), aquí la causa fue de datos: los

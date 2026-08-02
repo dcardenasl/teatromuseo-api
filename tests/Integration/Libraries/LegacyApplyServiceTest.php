@@ -208,6 +208,51 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame(30, $summary['created']['cms_entries']); // 5 courses + 25 teachers
     }
 
+    public function testCourseFallsBackToBaseTitleWhenSupplementTitleIsDuplicatedAcrossCourses(): void
+    {
+        // Reproduces a real legacy data bug found 2026-08-02: 7 sn_cursos rows carry a
+        // stale/copy-pasted title shared verbatim across several unrelated courses (e.g. 5
+        // different courses all titled "Súbete al Escenario" in the supplement, each with
+        // its own correct, distinct sn_escuela.curso_titulo). A supplement title used by
+        // only one course is trustworthy and still wins; one reused across several courses
+        // in the same slice is treated as a duplication bug, not a real shared name.
+        $hash = hash('sha256', 'legacy-course-duplicate-title-fixture');
+        $tables = [
+            'sn_escuela' => [
+                ['curso_id' => '9501', 'curso_titulo' => 'The Logic of Movement', 'curso_descripcion' => 'Desc'],
+                ['curso_id' => '9502', 'curso_titulo' => 'La Divina Escuela de Bufones', 'curso_descripcion' => 'Desc'],
+                ['curso_id' => '9503', 'curso_titulo' => 'Curso Sin Duplicado', 'curso_descripcion' => 'Desc'],
+            ],
+            'sn_cursos' => [
+                ['id' => '9501', 'title' => 'Súbete al Escenario'],
+                ['id' => '9502', 'title' => 'Súbete al Escenario'],
+                ['id' => '9503', 'title' => 'Título Único Confiable'],
+            ],
+            'sn_escuela_img' => [],
+            'sn_profesor' => [],
+            'sn_categoria_escuela' => [],
+        ];
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-course-duplicate-title-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/course-duplicate-title-fixture.sql', $hash);
+
+        $service->apply('B', $tables, '/tmp/course-duplicate-title-fixture.sql', $runId);
+
+        $payloads = $client->payloads('/cms/entries');
+        $titlesByCourse = [];
+        foreach ($payloads as $payload) {
+            $titlesByCourse[] = $payload['translations'][0]['title'] ?? null;
+        }
+
+        // Duplicated supplement title: falls back to the reliable, distinct base title.
+        $this->assertContains('The Logic of Movement', $titlesByCourse);
+        $this->assertContains('La Divina Escuela de Bufones', $titlesByCourse);
+        $this->assertNotContains('Súbete al Escenario', $titlesByCourse);
+        // Unique (non-duplicated) supplement title: still preferred, as before.
+        $this->assertContains('Título Único Confiable', $titlesByCourse);
+    }
+
     public function testSliceDSecondPassReusesFormSubmissionsAndPreservesHistoricalDate(): void
     {
         $hash = hash('sha256', 'legacy-contact-fixture');
