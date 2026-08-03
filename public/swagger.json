@@ -1573,6 +1573,61 @@
                 ]
             }
         },
+        "/api/v1/files/picker-manifest": {
+            "get": {
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Return the lightweight file picker manifest",
+                "description": "Returns all visible file metadata and direct thumbnail URLs. Pagination is performed by the client; binary content is never included.",
+                "operationId": "61e4613936bc791ae95daec8a0b6fa82",
+                "responses": {
+                    "200": {
+                        "description": "File picker manifest",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "items": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "example": 1704
+                                                },
+                                                "version": {
+                                                    "type": "string",
+                                                    "example": "1"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/files/upload": {
             "post": {
                 "tags": [
