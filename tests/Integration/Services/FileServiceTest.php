@@ -99,6 +99,7 @@ class FileServiceTest extends CIUnitTestCase
             $this->mockFilePolicy,
             $binaryIngestion,
             $this->mockDomainFileUsageClient,
+            new \App\Libraries\Files\FilePickerManifestCache(cache()),
         );
     }
 
@@ -447,6 +448,9 @@ class FileServiceTest extends CIUnitTestCase
         $this->mockFileRepository
             ->method('find')
             ->willReturn($file);
+        $this->mockStorage
+            ->method('url')
+            ->willReturn('http://example.com/myfile.pdf');
 
         $request = new \App\DTO\Request\Files\FileGetRequestDTO(['id' => 1, 'user_id' => 1], service('validation'));
         $result = $this->service->download($request);

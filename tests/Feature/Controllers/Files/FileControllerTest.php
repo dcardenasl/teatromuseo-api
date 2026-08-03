@@ -44,6 +44,23 @@ class FileControllerTest extends ApiTestCase
         $result->assertStatus(200);
     }
 
+    public function testPickerManifestReturnsLightweightItems(): void
+    {
+        \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));
+        $this->createFile($this->currentUserId, 'image/jpeg');
+
+        $result = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get('/api/v1/files/picker-manifest');
+
+        $result->assertStatus(200);
+        $json = $this->getResponseJson($result);
+        $this->assertSame('success', $json['status']);
+        $this->assertArrayHasKey('items', $json['data']);
+        $this->assertArrayHasKey('total', $json['data']);
+        $this->assertArrayHasKey('preview_url', $json['data']['items'][0]);
+        $this->assertArrayNotHasKey('path', $json['data']['items'][0]);
+    }
+
     public function testGetFileReturnsSuccess(): void
     {
         \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));

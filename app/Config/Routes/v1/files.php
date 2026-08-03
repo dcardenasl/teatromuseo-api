@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 $routes->group('files', ['filter' => ['jwtauth', 'throttle']], function ($routes): void {
     $routes->get('', '\App\Controllers\Api\V1\Files\FileController::index');
+    $routes->get('picker-manifest', '\App\Controllers\Api\V1\Files\FileController::pickerManifest');
     $routes->post('upload', '\App\Controllers\Api\V1\Files\FileController::upload');
     $routes->post('bulk-delete', '\App\Controllers\Api\V1\Files\FileController::bulkDelete');
     $routes->post('bulk-restore', '\App\Controllers\Api\V1\Files\FileController::bulkRestore');

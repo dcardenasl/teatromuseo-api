@@ -63,6 +63,35 @@ use OpenApi\Attributes as OA;
         new OA\Response(response: 401, ref: '#/components/responses/UnauthorizedResponse'),
     ]
 )]
+#[OA\Get(
+    path: '/api/v1/files/picker-manifest',
+    tags: ['Files'],
+    summary: 'Return the lightweight file picker manifest',
+    description: 'Returns all visible file metadata and direct thumbnail URLs. Pagination is performed by the client; binary content is never included.',
+    security: [['bearerAuth' => []]],
+    responses: [
+        new OA\Response(
+            response: 200,
+            description: 'File picker manifest',
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'status', type: 'string', example: 'success'),
+                    new OA\Property(
+                        property: 'data',
+                        type: 'object',
+                        properties: [
+                            new OA\Property(property: 'items', type: 'array', items: new OA\Items(type: 'object')),
+                            new OA\Property(property: 'total', type: 'integer', example: 1704),
+                            new OA\Property(property: 'version', type: 'string', example: '1'),
+                        ]
+                    ),
+                ],
+                type: 'object'
+            )
+        ),
+        new OA\Response(response: 401, ref: '#/components/responses/UnauthorizedResponse'),
+    ]
+)]
 #[OA\Post(
     path: '/api/v1/files/upload',
     tags: ['Files'],

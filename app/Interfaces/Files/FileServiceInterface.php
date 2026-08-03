@@ -24,6 +24,11 @@ interface FileServiceInterface
     public function index(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
 
     /**
+     * Return the lightweight read model used by the admin file picker.
+     */
+    public function pickerManifest(?SecurityContext $context = null): \App\DTO\Response\Files\FilePickerManifestResponseDTO;
+
+    /**
      * Download a file
      */
     public function download(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
