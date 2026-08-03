@@ -232,7 +232,8 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         // 5-year gap) and unrelated titles/topics. sn_cursos rows sharing a title across
         // several ids (e.g. 5 different current courses all titled "Súbete al Escenario") is
         // just real duplicate legacy content, not a migration bug — each still becomes its own
-        // entry with its own id-disambiguated slug. The sn_escuela rows must never read title,
+        // entry with a title-derived slug that only gains a non-legacy suffix when a collision
+        // actually exists. The sn_escuela rows must never read title,
         // description, cover, or any other field from sn_cursos, regardless of any of this.
         $hash = hash('sha256', 'legacy-course-independence-fixture');
         $tables = [
@@ -273,6 +274,93 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
             LegacyMigrationCatalog::MAP_MAPPED,
             $repository->findMap('sn_cursos', '9501', LegacyMigrationCatalog::TARGET_CMS, 'entry')['status']
         );
+    }
+
+    public function testCurrentCourseSlugIsDerivedFromTitleWithoutLegacyIdentifierSuffix(): void
+    {
+        $hash = hash('sha256', 'legacy-current-course-slug-fixture');
+        $tables = [
+            'sn_escuela' => [],
+            'sn_cursos' => [
+                [
+                    'id' => '9042',
+                    'title' => 'Súbete al Escenario - Vacaciones de Invierno',
+                    'description_text' => 'Desc actual',
+                    'category_id' => '3',
+                    'date_start' => '2026-07-15',
+                    'date_end' => '2026-07-20',
+                    'display' => '1',
+                ],
+            ],
+            'sn_escuela_img' => [],
+            'sn_profesor' => [],
+            'sn_categoria_escuela' => [],
+        ];
+
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-current-course-slug-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/current-course-slug-fixture.sql', $hash);
+
+        $summary = $service->apply('B', $tables, '/tmp/current-course-slug-fixture.sql', $runId);
+
+        $this->assertSame(1, $summary['created']['cms_entries']);
+        $entryPayload = $client->payloads('/cms/entries')[0];
+        $this->assertSame('subete-al-escenario-vacaciones-de-invierno-2026', $entryPayload['translations'][0]['slug']);
+    }
+
+    public function testCurrentCourseSlugUsesYearSuffixForDuplicateTitlesAcrossDifferentYears(): void
+    {
+        $hash = hash('sha256', 'legacy-current-course-year-suffix-fixture');
+        $tables = [
+            'sn_escuela' => [],
+            'sn_cursos' => [
+                [
+                    'id' => '41',
+                    'title' => 'La Escuela de los Nuevos Comediantes',
+                    'description_text' => 'Desc 2024',
+                    'date_start' => '2024-03-05',
+                    'date_end' => '2024-03-20',
+                    'display' => '1',
+                ],
+                [
+                    'id' => '42',
+                    'title' => 'La Escuela de los Nuevos Comediantes',
+                    'description_text' => 'Desc 2025',
+                    'date_start' => '2025-03-05',
+                    'date_end' => '2025-03-20',
+                    'display' => '1',
+                ],
+                [
+                    'id' => '43',
+                    'title' => 'La Escuela de los Nuevos Comediantes',
+                    'description_text' => 'Desc 2026',
+                    'date_start' => '2026-03-05',
+                    'date_end' => '2026-03-20',
+                    'display' => '1',
+                ],
+            ],
+            'sn_escuela_img' => [],
+            'sn_profesor' => [],
+            'sn_categoria_escuela' => [],
+        ];
+
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-current-course-year-suffix-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/current-course-year-suffix-fixture.sql', $hash);
+
+        $summary = $service->apply('B', $tables, '/tmp/current-course-year-suffix-fixture.sql', $runId);
+
+        $this->assertSame(3, $summary['created']['cms_entries']);
+        $slugs = array_column($client->payloads('/cms/entries'), 'translations');
+        $slugs = array_map(static fn (array $translations): string => $translations[0]['slug'] ?? '', $slugs);
+
+        $this->assertSame([
+            'la-escuela-de-los-nuevos-comediantes-2024',
+            'la-escuela-de-los-nuevos-comediantes-2025',
+            'la-escuela-de-los-nuevos-comediantes-2026',
+        ], $slugs);
     }
 
     public function testCourseCoverIsCopiedFromFirstGalleryImageByDisplayPosition(): void

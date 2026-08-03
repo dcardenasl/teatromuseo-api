@@ -295,10 +295,28 @@ final class LegacySliceBAnalyzer
 
     private function slug(string $value): string
     {
-        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        $value = is_string($ascii) ? $ascii : $value;
-        $value = strtolower($value);
-        $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? $value;
+        $value = trim(mb_strtolower($value));
+        if ($value === '') {
+            return 'sin-identidad';
+        }
+
+        $ascii = null;
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($value, \Normalizer::FORM_D);
+            if (is_string($normalized)) {
+                $ascii = preg_replace('/\p{Mn}+/u', '', $normalized);
+            }
+        }
+
+        if (! is_string($ascii) || $ascii === '') {
+            $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        }
+
+        if (! is_string($ascii) || $ascii === '') {
+            $ascii = $value;
+        }
+
+        $value = preg_replace('/[^a-z0-9]+/', '-', $ascii) ?? $ascii;
 
         return trim($value, '-') ?: 'sin-identidad';
     }

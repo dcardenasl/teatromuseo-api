@@ -389,6 +389,7 @@ final class LegacyApplyService
     {
         $currentCourses = $this->visibleRows($tables['sn_cursos'] ?? [], 'display');
         usort($currentCourses, fn (array $left, array $right): int => $this->numericId($left, 'id') <=> $this->numericId($right, 'id'));
+        $takenSlugs = [];
 
         foreach ($currentCourses as $course) {
             $courseId = $this->stringValue($course['id'] ?? '');
@@ -397,11 +398,12 @@ final class LegacyApplyService
             }
             $title = $this->stringValue($course['title'] ?? 'Curso');
             $coverFileId = $this->assetFile('sn_cursos', $courseId, $course['image_cover'] ?? null, 'curso-actual-' . $courseId, $runId);
+            $slug = $this->currentCourseSlug($course, $takenSlugs);
             $entryId = $this->applyCmsEntry(
                 'sn_cursos',
                 $courseId,
                 'cursos',
-                $this->slug($title) . '-c' . $courseId,
+                $slug,
                 $title,
                 $this->stringValue($course['description_text'] ?? ''),
                 [
@@ -1198,6 +1200,76 @@ final class LegacyApplyService
         return $this->slug($slug) . ($id !== '' ? '-' . $this->slug($id) : '');
     }
 
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, bool> $takenSlugs
+     */
+    private function currentCourseSlug(array $row, array &$takenSlugs): string
+    {
+        $base = $this->slug($this->stringValue($row['title'] ?? 'curso'));
+        if ($base === '') {
+            $base = 'curso';
+        }
+
+        $candidates = [];
+        $year = $this->courseStartYear($row);
+        if ($year !== null && ! $this->slugEndsWithYear($base, $year)) {
+            $candidates[] = $base . '-' . $year;
+        }
+
+        $startDate = $this->stringValue($row['date_start'] ?? '');
+        if ($this->validDate($startDate)) {
+            $candidates[] = $base . '-' . $this->slug($startDate);
+        }
+
+        $endDate = $this->stringValue($row['date_end'] ?? '');
+        if ($this->validDate($endDate) && $endDate !== $startDate) {
+            $candidates[] = $base . '-' . $this->slug($endDate);
+        }
+
+        $candidates[] = $base;
+
+        foreach ($candidates as $candidate) {
+            if (! isset($takenSlugs[$candidate])) {
+                $takenSlugs[$candidate] = true;
+
+                return $candidate;
+            }
+        }
+
+        for ($suffix = 2; $suffix < 1000; $suffix++) {
+            $candidate = $base . '-' . $suffix;
+            if (! isset($takenSlugs[$candidate])) {
+                $takenSlugs[$candidate] = true;
+
+                return $candidate;
+            }
+        }
+
+        $candidate = $base . '-' . bin2hex(random_bytes(4));
+        $takenSlugs[$candidate] = true;
+
+        return $candidate;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function courseStartYear(array $row): ?string
+    {
+        foreach (['date_start', 'date_end'] as $field) {
+            $value = $this->stringValue($row[$field] ?? '');
+            if ($this->validDate($value)) {
+                return substr($value, 0, 4);
+            }
+        }
+
+        return null;
+    }
+
+    private function slugEndsWithYear(string $slug, string $year): bool
+    {
+        return $year !== '' && preg_match('/(?:^|-)'.preg_quote($year, '/').'$/', $slug) === 1;
+    }
+
     /** @param array<string, mixed> $row */
     private function numericId(array $row, string $key): int
     {
@@ -1211,9 +1283,28 @@ final class LegacyApplyService
 
     private function slug(string $value): string
     {
-        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        $value = strtolower(is_string($ascii) ? $ascii : $value);
-        $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? $value;
+        $value = trim(mb_strtolower($value));
+        if ($value === '') {
+            return 'sin-identidad';
+        }
+
+        $ascii = null;
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($value, \Normalizer::FORM_D);
+            if (is_string($normalized)) {
+                $ascii = preg_replace('/\p{Mn}+/u', '', $normalized);
+            }
+        }
+
+        if (! is_string($ascii) || $ascii === '') {
+            $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        }
+
+        if (! is_string($ascii) || $ascii === '') {
+            $ascii = $value;
+        }
+
+        $value = preg_replace('/[^a-z0-9]+/', '-', $ascii) ?? $ascii;
         return trim($value, '-') ?: 'sin-identidad';
     }
 
