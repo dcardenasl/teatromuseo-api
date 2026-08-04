@@ -1894,12 +1894,21 @@ final class LegacyApplyService
                 $coverFileId = $this->assetFile('sn_funcionarios', $id, $coverPath, 'staff-' . $id, $runId);
             }
 
+            $hoverFileId = null;
+            $hoverPath = $this->stringValue($staff['foto2'] ?? '');
+            if ($hoverPath !== '' && $hoverPath !== $coverPath) {
+                $hoverFileId = $this->assetFile('sn_funcionarios', $id . ':hover', $hoverPath, 'staff-' . $id . '-hover', $runId);
+            }
+
             $wizardExtra = [
                 'profession' => $this->stringValue($staff['profesion'] ?? ''),
                 'position' => $this->stringValue($staff['cargo'] ?? ''),
                 'email' => $this->stringValue($staff['correo'] ?? ''),
                 'sort_order' => $this->numericId($staff, 'posicion'),
             ];
+            if ($hoverFileId !== null) {
+                $wizardExtra['hover_portrait'] = ['source_kind' => 'file', 'file_id' => $hoverFileId];
+            }
 
             $this->applyCmsEntry(
                 'sn_funcionarios',
