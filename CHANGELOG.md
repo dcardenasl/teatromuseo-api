@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Legacy migration slices A–C** — migration services now cover courses, teachers, works,
+  companies, videos, news, publications, institutional sliders, festival galleries, and the
+  Anímate festival, including the associated dry-run/apply mappings and assets.
+- **Legacy course media and staff enrichment** — course covers can be reconciled from gallery
+  images, and staff entries now receive hover portraits during migration.
+- **Cached file picker manifest** — added a cached manifest endpoint for efficient file-picker
+  loading in administrative clients.
+
 - **`LegacyMigration` library + `legacy:dry-run` command** — dry-run engine for the legacy data
   migration (SQL dump reader, asset resolver, slice A analyzer, migration control tables). No
   destructive writes yet.
@@ -39,6 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the existing `sn_upa` festivals.
 
 ### Fixed
+
+- **Legacy migration reconciliation** — later apply runs now repair missing work/event covers and
+  event gallery references instead of leaving partially migrated media behind.
+- **Legacy course identity and slugs** — separated `sn_cursos` from `sn_escuela` when coincidental
+  IDs do not represent the same record, preserved base titles when supplement titles duplicate
+  them, and hardened current-course slug generation.
+- **Canonical TeatroEscuela target** — legacy course mappings and applied entries now target the
+  `teatroescuela` CMS collection and use its canonical public route.
 
 - **`Config\Database`** — replaced the leftover starter-kit placeholder database name with the
   project's actual default (`teatromuseo_api`).
