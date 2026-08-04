@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Public-site cache permissions** — added `system.public-cache.read` and
+  `system.public-cache.invalidate` to the RBAC bootstrap roles for secured cache monitoring
+  and invalidation from administrative clients.
+
 - **Legacy migration slices A–C** — migration services now cover courses, teachers, works,
   companies, videos, news, publications, institutional sliders, festival galleries, and the
   Anímate festival, including the associated dry-run/apply mappings and assets.
@@ -47,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the existing `sn_upa` festivals.
 
 ### Fixed
+
+- **Public file URL resolution** — file responses now derive public URLs from storage paths
+  consistently instead of relying on incomplete or environment-specific URL fields.
 
 - **Legacy migration reconciliation** — later apply runs now repair missing work/event covers and
   event gallery references instead of leaving partially migrated media behind.
