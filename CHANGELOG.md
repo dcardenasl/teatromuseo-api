@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **WebP upload support** — added `webp` to the documented file types accepted by the shared
+  upload configuration.
 - **Public-site cache permissions** — added `system.public-cache.read` and
   `system.public-cache.invalidate` to the RBAC bootstrap roles for secured cache monitoring
   and invalidation from administrative clients.
