@@ -307,11 +307,12 @@ final class LegacyApplyService
             $entryId = $this->applyCmsEntry(
                 'sn_escuela',
                 $courseId,
-                'cursos',
+                'teatroescuela',
                 $key,
-                $this->stringValue($course['curso_titulo'] ?? 'Curso'),
+                $this->stringValue($course['curso_titulo'] ?? 'TeatroEscuela'),
                 $this->stringValue($course['curso_descripcion'] ?? ''),
                 [
+                    'activity_type' => 'course',
                     'category' => $categoryTitles[$this->stringValue($course['curso_categoria'] ?? '')] ?? '',
                     'modality' => 'presencial',
                     'start_date' => $this->validDate($course['curso_fecha_inicio'] ?? null) ? $this->stringValue($course['curso_fecha_inicio']) : null,
@@ -396,17 +397,18 @@ final class LegacyApplyService
             if ($courseId === '') {
                 continue;
             }
-            $title = $this->stringValue($course['title'] ?? 'Curso');
+            $title = $this->stringValue($course['title'] ?? 'TeatroEscuela');
             $coverFileId = $this->assetFile('sn_cursos', $courseId, $course['image_cover'] ?? null, 'curso-actual-' . $courseId, $runId);
             $slug = $this->currentCourseSlug($course, $takenSlugs);
             $entryId = $this->applyCmsEntry(
                 'sn_cursos',
                 $courseId,
-                'cursos',
+                'teatroescuela',
                 $slug,
                 $title,
                 $this->stringValue($course['description_text'] ?? ''),
                 [
+                    'activity_type' => 'course',
                     'category' => $categoryTitles[$this->stringValue($course['category_id'] ?? '')] ?? '',
                     'modality' => 'presencial',
                     'start_date' => $this->validDate($course['date_start'] ?? null) ? $this->stringValue($course['date_start']) : null,
@@ -1589,7 +1591,7 @@ final class LegacyApplyService
         return match ($path) {
             '', 'index', 'index.php' => '/',
             'cartelera' => '/cartelera',
-            'teatroescuela' => '/cursos',
+            'teatroescuela' => '/teatroescuela',
             'noticias' => '/noticias',
             'quienes-somos' => '/nosotros',
             'visitas-guiadas', 'eventos-masivos' => '/contacto',

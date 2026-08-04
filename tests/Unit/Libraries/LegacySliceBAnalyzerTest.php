@@ -73,7 +73,7 @@ final class LegacySliceBAnalyzerTest extends TestCase
         $courseMappings = array_filter(
             $report['mappings'],
             static fn (array $mapping): bool => $mapping['target_type'] === 'entry'
-                && $mapping['target_key'] === 'cursos:titeres-3'
+                && $mapping['target_key'] === 'teatroescuela:titeres-3'
         );
 
         $this->assertCount(2, $courseMappings);

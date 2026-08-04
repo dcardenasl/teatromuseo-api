@@ -108,7 +108,7 @@ final class LegacySliceBAnalyzer
                 continue;
             }
 
-            $mappings[] = $this->mapping('sn_escuela', $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'cursos:' . $courseKey, $sourceHash);
+            $mappings[] = $this->mapping('sn_escuela', $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'teatroescuela:' . $courseKey, $sourceHash);
 
             $categoryId = $this->stringValue($course['curso_categoria'] ?? '');
             if ($categoryId !== '' && ! isset($categoryIds[$categoryId])) {
@@ -124,7 +124,7 @@ final class LegacySliceBAnalyzer
             $supplement = $supplementsById[$courseId] ?? null;
             if ($supplement !== null) {
                 $supplementCount++;
-                $supplementMapping = $this->mapping('sn_cursos', $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'cursos:' . $courseKey, $sourceHash);
+                $supplementMapping = $this->mapping('sn_cursos', $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'teatroescuela:' . $courseKey, $sourceHash);
                 $supplementMapping['status'] = LegacyMigrationCatalog::MAP_SUPPLEMENTAL;
                 $mappings[] = $supplementMapping;
 
@@ -143,18 +143,18 @@ final class LegacySliceBAnalyzer
                 $pdfPath = $this->stringValue($supplement['pdf_file'] ?? '');
                 if ($pdfPath !== '') {
                     $documentCount++;
-                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':pdf', LegacyMigrationCatalog::TARGET_CMS, 'file', 'cursos:' . $courseKey . ':document', $sourceHash);
+                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':pdf', LegacyMigrationCatalog::TARGET_CMS, 'file', 'teatroescuela:' . $courseKey . ':document', $sourceHash);
                     $assets[] = $this->asset($pdfPath) + ['legacy_table' => 'sn_cursos', 'legacy_id' => $courseId, 'field' => 'pdf_file'];
                     $this->appendAssetIssue($issues, 'sn_cursos', $courseId, $assets[array_key_last($assets)]);
                 }
 
                 if ($this->stringValue($supplement['google_forms_link'] ?? '') !== '') {
                     $externalLinkCount++;
-                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':google-form', LegacyMigrationCatalog::TARGET_CMS, 'external_link', 'cursos:' . $courseKey . ':registration', $sourceHash);
+                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':google-form', LegacyMigrationCatalog::TARGET_CMS, 'external_link', 'teatroescuela:' . $courseKey . ':registration', $sourceHash);
                 }
                 if ($this->stringValue($supplement['youtube_video_link'] ?? '') !== '') {
                     $externalLinkCount++;
-                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':youtube', LegacyMigrationCatalog::TARGET_CMS, 'video_reference', 'cursos:' . $courseKey . ':video', $sourceHash);
+                    $mappings[] = $this->mapping('sn_cursos', $courseId . ':youtube', LegacyMigrationCatalog::TARGET_CMS, 'video_reference', 'teatroescuela:' . $courseKey . ':video', $sourceHash);
                 }
             }
 
@@ -169,7 +169,7 @@ final class LegacySliceBAnalyzer
                 }
                 $teacherIds[$teacherId] = $teacher;
                 $mappings[] = $this->mapping('sn_profesor', $teacherId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'personas:' . $this->teacherKey($teacher), $sourceHash);
-                $mappings[] = $this->mapping('sn_profesor', $teacherId . ':course:' . $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry_reference', 'cursos:' . $courseKey . ':instructor:' . $teacherId, $sourceHash);
+                $mappings[] = $this->mapping('sn_profesor', $teacherId . ':course:' . $courseId, LegacyMigrationCatalog::TARGET_CMS, 'entry_reference', 'teatroescuela:' . $courseKey . ':instructor:' . $teacherId, $sourceHash);
             }
 
             foreach ($this->visibleRows($tables['sn_escuela_img'] ?? [], 'escuela_img_display') as $image) {
@@ -185,11 +185,11 @@ final class LegacySliceBAnalyzer
                         $courseId . ':gallery',
                         LegacyMigrationCatalog::TARGET_CMS,
                         'gallery',
-                        'cursos:' . $courseKey . ':gallery',
+                        'teatroescuela:' . $courseKey . ':gallery',
                         $sourceHash
                     );
                 }
-                $mappings[] = $this->mapping('sn_escuela_img', $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', 'cursos:' . $courseKey . ':gallery:' . $imageId, $sourceHash);
+                $mappings[] = $this->mapping('sn_escuela_img', $imageId, LegacyMigrationCatalog::TARGET_CMS, 'gallery_item', 'teatroescuela:' . $courseKey . ':gallery:' . $imageId, $sourceHash);
                 $assetPath = $this->stringValue($image['escuela_img_url'] ?? '');
                 $assets[] = $this->asset($assetPath) + ['legacy_table' => 'sn_escuela_img', 'legacy_id' => $imageId, 'field' => 'escuela_img_url'];
                 $this->appendAssetIssue($issues, 'sn_escuela_img', $imageId, $assets[array_key_last($assets)]);
