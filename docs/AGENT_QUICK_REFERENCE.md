@@ -1,44 +1,53 @@
-# ⚡ Agent & Developer Quick Reference Guide
+# Agent Quick Reference — `teatromuseo-api`
 
-This "Cheat Sheet" is designed for rapid onboarding and high-speed development.
+This repository is the Teatro Museo Hub. Read `CLAUDE.md` and `TASKS.md` before
+editing. It owns users, RBAC/IAM, JWT issuance, and Hub-hosted domains.
 
-## 🚀 Core Commands
+## Commands
 
-| Command | Purpose | When to use? |
-|---------|---------|--------------|
-| `bash bin/make-crud.sh <Res> <Dom> '<fields>'` | **Scaffold Module (recommended)** | Starting a new CRUD resource — shell-safe, non-TTY friendly. |
-| `php spark make:crud {Name}` | **Scaffold Module (interactive)** | When you want to be prompted for each field. |
-| `php spark module:check {Name} --domain {Dom}` | **Validate wiring** | Immediately after scaffolding. |
-| `php spark migrate` | **Apply DB changes** | After scaffolding, review migration then apply. |
-| `pkill -f 'spark serve'; php spark serve &` | **Restart server** | Required after scaffolding — new route files aren't hot-loaded. |
-| `php spark swagger:generate` | **Update OpenAPI** | After adding endpoints or DTOs. |
-| `composer quality` | **Full Health Check** | Before pushing any code. |
-| `composer cs-fix` | **Fix Linting** | To auto-format your code. |
+```bash
+php spark serve --port 8180
 
-## 🏗️ Scaffolding Syntax
+# CRUD: always use the shell wrapper in non-interactive environments.
+bash vendor/bin/make-crud.sh ResourceName DomainName 'field:type:rules,...' yes [route]
+php spark module:check ResourceName --domain DomainName
+php spark migrate
+php spark swagger:generate
 
-Signature: `bash bin/make-crud.sh <Resource> <Domain> '<Fields>' [SoftDelete=yes] [Route]`
+composer test:unit
+composer test:integration
+composer test:feature
+composer quality
+composer cs-fix
+```
 
-**Available Types:** `string`, `text`, `int`, `bool`, `decimal`, `email`, `date`, `datetime`, `fk`, `json`.
-**Common Options:** `required`, `nullable`, `searchable`, `filterable`, `fk:tableName`.
+Restart the server after scaffolding because route files are not hot-reloaded.
 
-*Example:*
-`bash bin/make-crud.sh Product Catalog 'name:string:required|searchable,category_id:fk:categories:required' yes`
+## Architecture rules
 
-## ✅ Quality Standards Checklist
+```text
+Controller → RequestDTO → Service → Model/Entity → ResponseDTO
+```
 
-1.  **Immutability:** Always use `readonly class` for DTOs.
-2.  **DTO-First:** No direct input mapping in Controllers; use `RequestDataCollector`.
-3.  **Audit:** Use the `Auditable` trait for any model with sensitive data.
-4.  **Tests:** New services must include Unit tests; controllers must have Feature tests.
-5.  **Docs:** Ensure OpenAPI tags and summaries are clear and grouped by Domain.
+- Request DTOs extend `BaseRequestDTO`, use `readonly` classes, and validate in
+  their constructors.
+- Services are HTTP-agnostic; reads return DTOs and command flows return
+  `OperationResult` or throw exceptions.
+- Controllers extend `ApiController`, resolve the default service explicitly,
+  and use `handleRequest()`.
+- OpenAPI schemas belong in DTO attributes; endpoint documentation belongs in
+  `app/Documentation/`.
+- Permission codes use `.` (`users.write`, `iam.admin-access`), never `:`.
+- The Hub is the only application that issues JWTs and owns IAM tables.
 
-## 📁 File Structure Map (Layered API)
+## Structure
 
-- `app/Controllers/Api/V1/{Domain}/` -> Entry point.
-- `app/DTO/Request/{Domain}/` -> Request validation.
-- `app/DTO/Response/{Domain}/` -> Response transformation.
-- `app/Interfaces/{Domain}/` -> Service contracts.
-- `app/Services/{Domain}/` -> Business logic.
-- `app/Models/` -> Database orchestration.
-- `app/Documentation/{Domain}/` -> OpenAPI definitions.
+- `app/DTO/Request/` and `app/DTO/Response/` — API contracts.
+- `app/Controllers/Api/V1/` — HTTP boundary.
+- `app/Services/` — business logic.
+- `app/Models/`, `app/Entities/`, `app/Repositories/` — persistence.
+- `app/Config/Routes/v1/` — versioned routes.
+- `tests/Unit`, `tests/Integration`, `tests/Feature` — test suites.
+
+Never commit `.env`, tokens, or credentials. Prefer the Composer test scripts
+because they disable coverage when Xdebug is unavailable.
