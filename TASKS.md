@@ -1,4 +1,4 @@
-# TASKS — ci4-website-builder-api
+# TASKS — teatromuseo-api (Hub)
 
 > Fuente de verdad para trabajo abierto en este repositorio.
 > Los entregables cerrados están en [`TASKS_ARCHIVE.md`](TASKS_ARCHIVE.md).
@@ -11,7 +11,91 @@
 
 ## 🟡 Próximo
 
-*(vacío)*
+> Saneamiento arquitectónico — auditoría del 2026-08-05.
+> **Contexto, evidencia y rutas exactas:** [`../docs/plan/2026-08-05-saneamiento-arquitectonico.md`](../docs/plan/2026-08-05-saneamiento-arquitectonico.md)
+> Orden y dependencias cross-repo: [`../TASKS.md`](../TASKS.md)
+
+### Fase 1 — Seguridad
+
+- [ ] **SEC-03 — El escáner de virus miente.** `app/Services/Files/ClamAvScannerService.php:38-46`
+  devuelve `true` sin escanear y registra `"File scanned successfully (simulated)"`. Está cableado
+  como `VirusScannerServiceInterface` en `app/Config/FileDomainServices.php:84-86` y no tiene ningún
+  test. Elegir: integrar `xenolope/quahog` de verdad, **o** renombrar a `NullVirusScannerService`,
+  lanzar si se habilita, y que el log diga que no se escaneó. Lo inaceptable es el estado actual:
+  rastro de auditoría verde sobre un escaneo inexistente.
+
+### Fase 2 — Configuración y CI
+
+- [ ] **CFG-01 — `app.baseURL` de `phpunit.xml` apunta a 8080; el hub corre en 8180.**
+- [ ] **CFG-02 — 21 variables leídas y no documentadas** en `.env.example`, entre ellas
+  `HUB_INTERNAL_SECRET` (secreto compartido con los 3 dominios, documentado en cero sitios),
+  `LEGACY_ADMIN_TOKEN`, `CMS_DOMAIN_URL`, `CATALOG_DOMAIN_URL`, `EVENT_DOMAIN_URL`, `CORS_ALLOWED_*`.
+  Resolver además la colisión `FILES_USER_SCOPED` vs `FILE_USER_SCOPED_FILES` (dos banderas
+  casi idénticas, ambas declaradas).
+- [ ] **CFG-05 — Alinear el gate de calidad** con la política única de la flota (umbral de cobertura
+  actual 47,15 %; CI reimplementa el gate como pasos sueltos en vez de invocar `composer quality`,
+  y ya divergió: CI corre `composer audit`, `quality` no).
+- [ ] **CFG-08 — `ci4-api-scaffolding` está en v1.0.0**, una minor por detrás de los tres dominios
+  (cms/catalog v1.1.1, event v1.1.2). Retirar además el paso muerto de CI
+  `scripts/ci-strip-local-repos.php`: ninguna app tiene la clave `repositories`.
+
+### Fase 3 — Extracción a `ci4-api-core`
+
+- [ ] **CORE-02 — Reconciliar el boilerplate de infra** que el hub comparte con los dominios
+  (`AppExceptionHandler`, `HasCrudActions`, `AuditRepository`, `MetricModel`, `RequestLogModel`,
+  `AuditLogModel` — este último sin el `onlyEntities()` que catalog y event sí recibieron) y
+  consumirlo desde el paquete.
+- [ ] **CORE-06 — Convención única de permisos.** Coordinar la migración de códigos con los roles ya
+  asignados en la BD del hub. ⚠️ Requiere ventana de mantenimiento — ver decisiones pendientes.
+
+### Fase 4 — Coherencia de capas
+
+- [ ] **LAYER-02 — 5 controladores se saltan el DTO.** El peor:
+  `app/Controllers/Api/V1/Iam/SelfPermissionsController.php` lee JSON crudo (l.46), construye
+  401/422/200 a mano (l.42/55/68) e **instancia modelos desde el controlador** (l.61-62).
+  También `Internal/InternalFileMetaController.php:52` (`model(FileModel::class)`),
+  `Auth/ServiceTokenController`, `Iam/RolePermissionMatrixController`,
+  `Identity/PasswordResetController:42`.
+- [ ] **LAYER-03 — ~40 sitios de builder crudo en 8 servicios IAM** (`UserRoleAssignmentService` 11,
+  `RoleService` 6, `EffectivePermissionsResolver` 5, `RolePermissionAssignmentService` 5,
+  `RolePermissionMatrixService` 4, `IamAuthorizationService` 3, `AssignableRolesService` 2,
+  `ApplicationPermissionsResolver`). La lista blanca de
+  `tests/Unit/Architecture/ServiceModelDependencyConventionsTest.php:36` **ya creció más allá de las
+  "seis excepciones justificadas"** que declara su docblock (l.13).
+  ⚠️ Decidir primero: modelos para las tablas IAM, o declarar IAM como capa de repositorio con ADR.
+- [ ] **LAYER-04 — Faltan los tests de arquitectura** `ControllerModelDependencyConventionsTest` y
+  `ArchitectureTest`, que sí existen en cms y catalog. Es decir: la app con violaciones
+  controlador→modelo es precisamente la que no tiene el guardián.
+- [ ] **LAYER-07 — `app/Services/Auth/TokenIntrospectionService.php` no tiene ningún test**, y es la
+  clase de la que depende la frontera de autenticación de los 3 dominios y del BFF. **Cubrirla
+  primero.** Sin tests tampoco: `Iam/RolePermissionMatrixService`, `Iam/ApplicationService`,
+  `Files/ClamAvScannerService`, `Tokens/Support/ApiKeyMaterialService`. Controladores sin
+  referencia en `tests/`: `InternalEmailController`, `InternalFileMetaController`,
+  `Iam/ApplicationController`, `Iam/UserPermissionsController`.
+
+### Fase 5 — Migraciones y datos
+
+- [ ] **MIG-02 — Cuatro migraciones cuyo neto es cero:** `CreateAppUserMembershipsTable` +
+  `CreateMembershipRolesTable` → `MigrateMembershipRolesToUserRoles` → `DropMembershipsTables`.
+  Igual la cadena `CreateRolesTable` → `AddIsSelfAssignableToRoles` → `DropApplicationIdFromRoles`.
+- [ ] **MIG-03 — `app/Database/Seeds/UsersLoadTestSeeder.php`** es un generador con faker para
+  pruebas de carga viviendo en el directorio de seeds de producción. Mover a `tests/` o eliminar.
+- [ ] **DATA-01 — Construir `php spark files:audit`** (solo reporta, **no borra**). Hoy no existe
+  ninguna forma de saber qué está huérfano en los 9.110 archivos / 2,0 GB de `writable/uploads`
+  (1.811 son variantes regenerables vía `RegenerateFileVariants`). Tres listas:
+  archivos en disco sin fila en `files`, filas sin archivo en disco, y filas que ningún dominio
+  referencia (consultando los `FileUsageService` de cms/catalog/event vía endpoint interno).
+- [ ] **HYG-01 — Purgar y rotar `writable/debugbar` (1,4 GB) y `writable/logs` (49 MB).**
+  Verificar que el toolbar solo escribe en `CI_ENVIRONMENT=development`.
+
+### Fase 6 — Limpieza y docs
+
+- [ ] **DEAD-02 — `app/Config/Routes/v1/public.php:24` sigue siendo la plantilla intacta**
+  (*"Replace the ping example below with the real public endpoints for your app"*), seguida de una
+  única ruta `public/ping` en closure. Toda la superficie pública del hub con `appKeyRequired` es un
+  marcador de posición.
+- [ ] **DOC-01 — Corregir el puerto 8080 en `CLAUDE.md`** (el hub corre en 8180) y crear el
+  `AGENTS.md` que falta en este repo.
 
 ## ✅ Completadas
 
