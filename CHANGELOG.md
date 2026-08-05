@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VirusScannerServiceInterface` wiring** — replaced `ClamAvScannerService`, which reported a
+  simulated successful scan without ever contacting a scanner, with `NullVirusScannerService`:
+  scanning disabled logs that the file was not scanned, and scanning enabled without a real
+  scanner integration fails closed instead of reporting a false pass.
 - **Public file URL resolution** — file responses now derive public URLs from storage paths
   consistently instead of relying on incomplete or environment-specific URL fields.
 
