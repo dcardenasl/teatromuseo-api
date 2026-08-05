@@ -17,12 +17,6 @@
 
 ### Fase 1 — Seguridad
 
-- [ ] **SEC-03 — El escáner de virus miente.** `app/Services/Files/ClamAvScannerService.php:38-46`
-  devuelve `true` sin escanear y registra `"File scanned successfully (simulated)"`. Está cableado
-  como `VirusScannerServiceInterface` en `app/Config/FileDomainServices.php:84-86` y no tiene ningún
-  test. Elegir: integrar `xenolope/quahog` de verdad, **o** renombrar a `NullVirusScannerService`,
-  lanzar si se habilita, y que el log diga que no se escaneó. Lo inaceptable es el estado actual:
-  rastro de auditoría verde sobre un escaneo inexistente.
 
 ### Fase 2 — Configuración y CI
 
@@ -98,6 +92,13 @@
   `AGENTS.md` que falta en este repo.
 
 ## ✅ Completadas
+
+- **SEC-03 — Sustituir el escáner antivirus simulado (2026-08-05):** `ClamAvScannerService` fue
+  reemplazado por `NullVirusScannerService`; con el flag apagado registra que el archivo no fue
+  escaneado y con el flag encendido lanza una excepción fail-closed. Se añadieron mensajes i18n,
+  configuración explícita y 2 tests unitarios. PHPStan, CS-Fixer, Swagger y los tests dirigidos ✅.
+  La suite completa conserva 7 errores preexistentes en `LegacyApplyServiceTest` por falta de
+  configuración CMS (`teatroescuela`), sin relación con este cambio.
 
 - **LEGACY-MAP-033 — Regla complementaria: la portada también debe existir como primer ítem de
   la galería, sin duplicar imágenes (2026-08-02):** Segunda mitad de la regla pedida por David en

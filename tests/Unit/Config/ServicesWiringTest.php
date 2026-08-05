@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Config;
 
 use App\Interfaces\Files\FileServiceInterface;
+use App\Services\Files\NullVirusScannerService;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Email;
 use Config\Services;
@@ -25,6 +26,13 @@ final class ServicesWiringTest extends CIUnitTestCase
         $service = Services::fileService(false);
 
         $this->assertInstanceOf(FileServiceInterface::class, $service);
+    }
+
+    public function testVirusScannerFactoryUsesExplicitNullScanner(): void
+    {
+        $scanner = Services::virusScannerService(false);
+
+        $this->assertInstanceOf(NullVirusScannerService::class, $scanner);
     }
 
     public function testBuildMailerFromConfigReturnsMailerForSmtpProvider(): void

@@ -81,10 +81,9 @@ trait FileDomainServices
             return static::getSharedInstance('virusScannerService');
         }
 
-        return new \App\Services\Files\ClamAvScannerService(
+        return new \App\Services\Files\NullVirusScannerService(
             static::logger(),
             (bool) env('FILES_VIRUS_SCAN_ENABLED', false),
-            (string) env('FILES_CLAMAV_ADDRESS', 'tcp://127.0.0.1:3310')
         );
     }
 

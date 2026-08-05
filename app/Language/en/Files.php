@@ -27,6 +27,7 @@ return [
     'malware_detected'    => 'Malware or virus detected in the uploaded file',
     'temp_file_creation_failed' => 'Failed to create temporary file for virus scanning',
     'virus_scan_read_error' => 'Unable to read file for virus scanning',
+    'virus_scan_unavailable' => 'Virus scanning is enabled, but no scanner is configured',
 
     // Request messages
     'invalid_request'     => 'Invalid request',
