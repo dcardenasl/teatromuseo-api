@@ -56,28 +56,7 @@
 
 ### Fase 4 — Coherencia de capas
 
-- [ ] **LAYER-02 — 5 controladores se saltan el DTO.** El peor:
-  `app/Controllers/Api/V1/Iam/SelfPermissionsController.php` lee JSON crudo (l.46), construye
-  401/422/200 a mano (l.42/55/68) e **instancia modelos desde el controlador** (l.61-62).
-  También `Internal/InternalFileMetaController.php:52` (`model(FileModel::class)`),
-  `Auth/ServiceTokenController`, `Iam/RolePermissionMatrixController`,
-  `Identity/PasswordResetController:42`.
-- [ ] **LAYER-03 — ~40 sitios de builder crudo en 8 servicios IAM** (`UserRoleAssignmentService` 11,
-  `RoleService` 6, `EffectivePermissionsResolver` 5, `RolePermissionAssignmentService` 5,
-  `RolePermissionMatrixService` 4, `IamAuthorizationService` 3, `AssignableRolesService` 2,
-  `ApplicationPermissionsResolver`). La lista blanca de
-  `tests/Unit/Architecture/ServiceModelDependencyConventionsTest.php:36` **ya creció más allá de las
-  "seis excepciones justificadas"** que declara su docblock (l.13).
-  ⚠️ Decidir primero: modelos para las tablas IAM, o declarar IAM como capa de repositorio con ADR.
-- [ ] **LAYER-04 — Faltan los tests de arquitectura** `ControllerModelDependencyConventionsTest` y
-  `ArchitectureTest`, que sí existen en cms y catalog. Es decir: la app con violaciones
-  controlador→modelo es precisamente la que no tiene el guardián.
-- [ ] **LAYER-07 — `app/Services/Auth/TokenIntrospectionService.php` no tiene ningún test**, y es la
-  clase de la que depende la frontera de autenticación de los 3 dominios y del BFF. **Cubrirla
-  primero.** Sin tests tampoco: `Iam/RolePermissionMatrixService`, `Iam/ApplicationService`,
-  `Files/ClamAvScannerService`, `Tokens/Support/ApiKeyMaterialService`. Controladores sin
-  referencia en `tests/`: `InternalEmailController`, `InternalFileMetaController`,
-  `Iam/ApplicationController`, `Iam/UserPermissionsController`.
+*(LAYER-02/03/04/07 completadas 2026-08-06 — ver `## ✅ Completadas`. Nada abierto por ahora en esta fase.)*
 
 ### Fase 5 — Migraciones y datos
 
@@ -104,6 +83,56 @@
   `AGENTS.md` que falta en este repo.
 
 ## ✅ Completadas
+
+- **LAYER-02 — Los 5 controladores identificados ahora pasan por el flujo DTO-first (2026-08-06):**
+  `Iam/SelfPermissionsController` ya no lee JSON crudo ni instancia modelos: nuevo
+  `SelfPermissionsRequestDTO` + `Services::selfPermissionService()`, controlador reducido a
+  `handleRequest()`. `Internal/InternalFileMetaController` ya no hace `model(FileModel::class)`
+  desde el controlador: nuevo `FileService::resolvePublicMetaBatch()` (mueve la resolución de
+  URLs/variants vía `StorageManager`, antes embebida en el controlador, a la capa de servicio) que
+  llama a `FileRepositoryInterface::findPublicMetaBatch()`. `Iam/RolePermissionMatrixController`
+  extendía `Controller` plano y armaba `ApiResponse::success()` a mano — ahora extiende
+  `ApiController` y usa `handleRequest()`. `Auth/ServiceTokenController` e
+  `Identity/PasswordResetController` se auditaron línea por línea y ya cumplían el patrón DTO-first
+  desde el scaffold original (extienden `ApiController`, usan `handleRequest()`, sin JSON crudo ni
+  acceso a modelos) — el hallazgo original del audit para estos dos parece estar desactualizado;
+  se dejan sin cambios. `tests/Unit/Architecture/ControllerDtoRequestContractsTest.php` ya no
+  necesita excepciones para `SelfPermissionsController`/`RolePermissionMatrixController`.
+- **LAYER-03 — Los 8 servicios IAM migrados de `$db->table()`/`Database::connect()` a Models
+  (2026-08-06):** decisión del dueño del proyecto confirmada — Models para las tablas IAM, no
+  ADR de capa-repositorio. `RoleModel`, `PermissionModel`, `RolePermissionModel`, `UserRoleModel` y
+  `ApplicationModel` ganaron ~25 finders/mutadores nuevos (p.ej. `findIdByCode`,
+  `getPermissionCodesByRoleIds`, `getDetailedPermissionsForRole`, `userHasPermissionCode`,
+  `allAssignmentsGroupedByRole`). Los 8 servicios (`UserRoleAssignmentService`, `RoleService`,
+  `EffectivePermissionsResolver`, `RolePermissionAssignmentService`, `RolePermissionMatrixService`,
+  `IamAuthorizationService`, `AssignableRolesService`, `ApplicationPermissionsResolver`) y de paso
+  `UserPermissionsService` (mismo patrón, `->table('users')`/`->table('applications')`, no estaba en
+  la lista original pero es el mismo problema) quedaron con **cero** sitios de builder crudo.
+  `tests/Unit/Architecture/ServiceModelDependencyConventionsTest.php` se reescribió: la regla
+  original prohibía `use App\Models\...` en servicios, pero eso es justo lo que ahora hacen (a
+  propósito) los 9 servicios de arriba — la regla apuntaba al eje equivocado. Ahora prohíbe
+  `$db->table()`/`Database::connect()` directo en `app/Services`, con whitelist vacía (0
+  excepciones, ni siquiera las "seis justificadas" originales, que resultaron ser un axis distinto
+  y ya no aplican). `app/Config/IamDomainServices.php` actualizado con la inyección de Models nueva.
+- **LAYER-04 — Tests de arquitectura ausentes portados desde cms/catalog (2026-08-06):**
+  `ArchitectureTest.php` (stub idéntico a los 3 dominios) y `ControllerModelDependencyConventionsTest.php`
+  — se adoptó el patrón de catalog-domain (whitelist vacía, boolean de presencia) en vez del de
+  cms-domain (baseline por archivo/patrón con conteo), por ser la versión más estricta, ya que
+  LAYER-02/03 dejaron esta app en cero violaciones controlador→modelo. No se añadió regla de
+  "migraciones deben usar forge->" (eso es MIG-01, fase distinta).
+- **LAYER-07 — Cobertura de tests en la frontera de auth y controladores/servicios en cero
+  (2026-08-06):** `TokenIntrospectionServiceTest` (ya existía parcialmente de una corrida previa)
+  ampliado de 5 a 11 casos: jti ausente (sin check de revocación), uid presente sin applicationId,
+  uid=0 tratado como ausente, `scope` no-array, expiración presente/ausente. Tests nuevos:
+  `RolePermissionMatrixServiceTest` (unit, mocks de los 4 Models), `ApiKeyMaterialServiceTest` (8
+  casos), `ApplicationControllerTest` (feature, 6 casos), `InternalEmailControllerTest` (feature, 5
+  casos), `InternalFileMetaControllerTest` (feature, 6 casos incluyendo soft-delete). Dos ítems de
+  la lista original resultaron ya cubiertos/obsoletos: `Iam/UserPermissionsController` tiene
+  `UserPermissionsEndpointTest` completo (6 casos) pese a no aparecer en el grep original del
+  audit (heurística de referencia literal al nombre de clase, no detecta tests basados en ruta);
+  `Files/ClamAvScannerService` ya no existe — fue reemplazado por `NullVirusScannerService` en
+  SEC-03 (2026-08-05), que ya tiene su propio test. Suite completa: 757 tests / 2.126 assertions,
+  0 fallos (baseline previo: 716).
 
 - **CORE-02 (parcial) — `ci4-api-core` v1.2.0 → v1.3.0, `HasCrudActions` muerto eliminado
   (2026-08-06):** subida directa (constraint `^1.0`, sin tocar `composer.json`), incluyó el fix del
