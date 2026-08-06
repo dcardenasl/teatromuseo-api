@@ -38,4 +38,73 @@ class RoleModel extends BaseAuditableModel
         'description' => 'permit_empty|string',
         'is_system' => 'permit_empty|in_list[0,1]',
     ];
+
+    /**
+     * Resolve a role's primary key by its unique code.
+     */
+    public function findIdByCode(string $code): ?int
+    {
+        /** @var RoleEntity|null $role */
+        $role = $this->select('id')->where('code', $code)->first();
+
+        return $role !== null ? (int) $role->id : null;
+    }
+
+    public function existsById(int $id): bool
+    {
+        return $this->select('id')->find($id) !== null;
+    }
+
+    public function isSystemRole(int $id): bool
+    {
+        /** @var RoleEntity|null $role */
+        $role = $this->select('is_system')->find($id);
+
+        return $role !== null && (bool) $role->is_system;
+    }
+
+    /**
+     * All roles, ordered by name, with the columns needed to build the
+     * assignable-roles / role-permission-matrix read models.
+     *
+     * @return list<array{id:int, code:string, name:string, description:string|null, is_system:bool, is_self_assignable:bool}>
+     */
+    public function listAllOrderedByName(): array
+    {
+        /** @var list<RoleEntity> $roles */
+        $roles = $this->select('id, code, name, description, is_system, is_self_assignable')
+            ->orderBy('name', 'ASC')
+            ->findAll();
+
+        return array_map(static fn (RoleEntity $role): array => [
+            'id'                 => (int) $role->id,
+            'code'               => (string) $role->code,
+            'name'               => (string) $role->name,
+            'description'        => $role->description !== null ? (string) $role->description : null,
+            'is_system'          => (bool) $role->is_system,
+            'is_self_assignable' => (bool) ($role->is_self_assignable ?? false),
+        ], $roles);
+    }
+
+    /**
+     * All roles, ordered by code — used by the role-permission matrix (which
+     * doesn't need is_self_assignable).
+     *
+     * @return list<array{id:int, code:string, name:string, description:string|null, is_system:bool}>
+     */
+    public function listAllOrderedByCode(): array
+    {
+        /** @var list<RoleEntity> $roles */
+        $roles = $this->select('id, code, name, description, is_system')
+            ->orderBy('code', 'ASC')
+            ->findAll();
+
+        return array_map(static fn (RoleEntity $role): array => [
+            'id'          => (int) $role->id,
+            'code'        => (string) $role->code,
+            'name'        => (string) $role->name,
+            'description' => $role->description !== null ? (string) $role->description : null,
+            'is_system'   => (bool) $role->is_system,
+        ], $roles);
+    }
 }
