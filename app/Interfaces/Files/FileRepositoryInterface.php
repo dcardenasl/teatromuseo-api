@@ -40,4 +40,15 @@ interface FileRepositoryInterface extends RepositoryInterface
      * Returns null only when no matching URL exists at all.
      */
     public function findByUrl(string $url): ?object;
+
+    /**
+     * Batch-fetch raw public metadata columns for file IDs (internal M2M
+     * endpoint). Returns the persisted `path`/`url`/`variants` columns
+     * as-is — URL resolution (via StorageManager) is a service concern,
+     * not a data-access one.
+     *
+     * @param array<int|string, mixed> $ids
+     * @return array<int, array{id: int, path: string, url: string|null, variants: mixed}>
+     */
+    public function findPublicMetaBatch(array $ids): array;
 }

@@ -55,4 +55,52 @@ class FileRepository extends BaseRepository implements FileRepositoryInterface
 
         return $result;
     }
+
+    /**
+     * @param array<int|string, mixed> $ids
+     * @return array<int, array{id: int, path: string, url: string|null, variants: mixed}>
+     */
+    public function findPublicMetaBatch(array $ids): array
+    {
+        $filteredIds = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            static fn (int $id): bool => $id > 0
+        )));
+
+        if (empty($filteredIds)) {
+            return [];
+        }
+
+        $filteredIds = array_slice($filteredIds, 0, 200);
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $this->model
+            ->select('id, path, url, variants')
+            ->whereIn('id', $filteredIds)
+            ->where('deleted_at IS NULL')
+            ->asArray()
+            ->findAll();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $idRaw = $row['id'] ?? 0;
+            $fileId = is_scalar($idRaw) ? (int) $idRaw : 0;
+            if ($fileId <= 0) {
+                continue;
+            }
+
+            $path = is_scalar($row['path'] ?? null) ? trim((string) $row['path']) : '';
+            $url = is_scalar($row['url'] ?? null) ? (string) $row['url'] : null;
+            $variants = $row['variants'] ?? null;
+
+            $result[$fileId] = [
+                'id'       => $fileId,
+                'path'     => $path,
+                'url'      => $url,
+                'variants' => $variants,
+            ];
+        }
+
+        return $result;
+    }
 }

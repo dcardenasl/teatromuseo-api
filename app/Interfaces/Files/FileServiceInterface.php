@@ -103,4 +103,14 @@ interface FileServiceInterface
      * @return list<array{id:int, ok:bool, error?:string}>
      */
     public function bulkForceDestroy($ids, ?SecurityContext $context = null);
+
+    /**
+     * Batch-resolve public metadata (id, url, variants) for a set of file
+     * IDs, for internal M2M consumption by trusted Domain apps. Resolves
+     * relative storage paths to absolute URLs via StorageManager.
+     *
+     * @param array<int|string, mixed> $ids
+     * @return array<int, array{id: int, url: string|null, variants: array<string, mixed>}>
+     */
+    public function resolvePublicMetaBatch(array $ids): array;
 }

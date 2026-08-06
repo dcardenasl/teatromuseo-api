@@ -576,4 +576,41 @@ class FileService implements FileServiceInterface
         return $file;
     }
 
+    /**
+     * @param array<int|string, mixed> $ids
+     * @return array<int, array{id: int, url: string|null, variants: array<string, mixed>}>
+     * @phpstan-ignore dtoFirst.arrayReturn, dtoFirst.arrayParameter
+     */
+    public function resolvePublicMetaBatch(array $ids): array
+    {
+        $rows = $this->fileRepository->findPublicMetaBatch($ids);
+
+        $result = [];
+        foreach ($rows as $fileId => $row) {
+            $variants = $row['variants'];
+            if (is_string($variants)) {
+                $decoded  = json_decode($variants, true);
+                $variants = is_array($decoded) ? $decoded : [];
+            } elseif (! is_array($variants)) {
+                $variants = [];
+            }
+
+            $path = $row['path'];
+            $url  = $path !== '' ? $this->storage->url($path) : $row['url'];
+
+            foreach ($variants as $key => $variant) {
+                if (is_array($variant) && isset($variant['path']) && is_string($variant['path'])) {
+                    $variants[$key]['url'] = $this->storage->url($variant['path']);
+                }
+            }
+
+            $result[$fileId] = [
+                'id'       => $row['id'],
+                'url'      => $url,
+                'variants' => $variants,
+            ];
+        }
+
+        return $result;
+    }
 }
