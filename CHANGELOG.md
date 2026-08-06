@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`files:audit` command** — read-only CLI diagnostic that diffs physical disk files against
+  `files` table records; performs no destructive operations.
 - **WebP upload support** — added `webp` to the documented file types accepted by the shared
   upload configuration.
 - **Public-site cache permissions** — added `system.public-cache.read` and
