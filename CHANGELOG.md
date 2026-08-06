@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them, and hardened current-course slug generation.
 - **Canonical TeatroEscuela target** — legacy course mappings and applied entries now target the
   `teatroescuela` CMS collection and use its canonical public route.
+- **`sn_obra` occurrence scheduling** — `LegacyScheduleParser` now parses `hora_obra` strictly
+  (quarantining rows with an invalid or missing time instead of silently defaulting to midnight)
+  and supports multiple showtimes per row, creating one occurrence per parsed time instead of one.
 
 - **`Config\Database`** — replaced the leftover starter-kit placeholder database name with the
   project's actual default (`teatromuseo_api`).
