@@ -25,7 +25,8 @@ class EffectivePermissionsResolverAllTest extends ApiTestCase
 
         $this->testDb = \Config\Database::connect();
         $this->resolver = new EffectivePermissionsResolver(
-            $this->testDb,
+            model(\App\Models\UserRoleModel::class),
+            model(\App\Models\PermissionModel::class),
             Services::cache()
         );
     }

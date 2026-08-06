@@ -7,18 +7,17 @@ namespace App\Services\Iam;
 use App\DTO\Request\Iam\ListUserPermissionsRequestDTO;
 use App\DTO\Response\Iam\ApplicationSummary;
 use App\DTO\Response\Iam\UserPermissionsResponseDTO;
-use CodeIgniter\Database\ConnectionInterface;
+use App\Models\ApplicationModel;
+use App\Models\UserModel;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
 
 class UserPermissionsService
 {
-    /**
-     * @param ConnectionInterface<object, object> $db
-     */
     public function __construct(
         private readonly EffectivePermissionsResolver $resolver,
-        private readonly ConnectionInterface $db,
+        private readonly UserModel $userModel,
+        private readonly ApplicationModel $applicationModel,
     ) {
     }
 
@@ -49,39 +48,21 @@ class UserPermissionsService
 
     private function userExists(int $userId): bool
     {
-        $query = $this->db->table('users')
-            ->select('id')
-            ->where('id', $userId)
-            ->where('deleted_at', null)
-            ->get();
-
-        if ($query === false) {
-            return false;
-        }
-
-        return $query->getRowArray() !== null;
+        // UserModel::useSoftDeletes excludes soft-deleted rows automatically.
+        return $this->userModel->find($userId) !== null;
     }
 
     private function findApplicationByCode(string $code): ?ApplicationSummary
     {
-        $query = $this->db->table('applications')
-            ->select('id, code, name')
-            ->where('code', $code)
-            ->get();
-
-        if ($query === false) {
-            return null;
-        }
-
-        $row = $query->getRowArray();
-        if ($row === null) {
+        $application = $this->applicationModel->findByCode($code);
+        if ($application === null) {
             return null;
         }
 
         return new ApplicationSummary(
-            id: (int) $row['id'],
-            code: (string) $row['code'],
-            name: (string) $row['name'],
+            id: (int) $application->id,
+            code: (string) $application->code,
+            name: (string) $application->name,
         );
     }
 }

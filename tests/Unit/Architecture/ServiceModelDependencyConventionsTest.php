@@ -7,40 +7,38 @@ namespace Tests\Unit\Architecture;
 use CodeIgniter\Test\CIUnitTestCase;
 
 /**
- * Guardrail to avoid growing direct Model coupling in service layer.
+ * Guardrail against Services bypassing the Model layer with raw query
+ * builder / connection access.
  *
- * Services must not import Models directly (`use App\Models\...`).
- * The six whitelisted files below are justified exceptions (auth internals,
- * token lifecycle, system metrics) that pre-date the repository layer.
+ * Rewritten 2026-08-06 (LAYER-03, saneamiento arquitectónico). This test
+ * used to forbid `use App\Models\...;` in app/Services, with six
+ * "justified exceptions" whitelisted (Auth/PasswordResetService,
+ * Auth/ServiceTokenService, Auth/UserInvitationService, System/MetricsService,
+ * Tokens/RefreshTokenService, Tokens/TokenRevocationService).
  *
- * For cross-entity queries in domain services, inject a second repository
- * via the constructor and use `findBy()`:
- *
- *   public function __construct(
- *       protected SubscriberRepository $repository,
- *       protected ProjectRepository    $projectRepository,
- *   ) {}
- *
- *   // Then: $this->projectRepository->findBy('project_key', $key)
- *
- * This keeps the service PHPStan-clean and satisfies this guardrail without
- * resorting to inline FQCNs like `model(\App\Models\ProjectModel::class)`.
+ * That rule pointed at the wrong axis: services importing and using a Model
+ * IS the sanctioned pattern in this app (see the six pre-existing exceptions
+ * above, and now the eight IAM services migrated off raw builder access —
+ * UserRoleAssignmentService, RoleService, EffectivePermissionsResolver,
+ * RolePermissionAssignmentService, RolePermissionMatrixService,
+ * IamAuthorizationService, AssignableRolesService,
+ * ApplicationPermissionsResolver — plus UserPermissionsService). What
+ * actually indicates a layer violation is a Service reaching past its Model
+ * entirely, straight to `$db->table(...)` / `Database::connect(...)`. That
+ * is the real guardrail: zero tolerance, no whitelist. Extend a Model with a
+ * new finder/mutator instead of dropping to raw SQL in a Service. If a raw
+ * query is truly unavoidable (e.g. a transaction-scoped lock with no Active
+ * Record equivalent), add a narrowly-scoped, commented exception at the call
+ * site itself — not a blanket whitelist entry here.
  */
 class ServiceModelDependencyConventionsTest extends CIUnitTestCase
 {
-    public function testServicesUsingModelsAreExplicitlyWhitelisted(): void
+    public function testServicesDoNotBypassModelsWithRawBuilderAccess(): void
     {
         $root = rtrim((string) ROOTPATH, DIRECTORY_SEPARATOR);
         $serviceDir = $root . DIRECTORY_SEPARATOR . 'app/Services';
 
-        $allowed = [
-            'app/Services/Auth/PasswordResetService.php',
-            'app/Services/Auth/ServiceTokenService.php',
-            'app/Services/Auth/UserInvitationService.php',
-            'app/Services/System/MetricsService.php',
-            'app/Services/Tokens/RefreshTokenService.php',
-            'app/Services/Tokens/TokenRevocationService.php',
-        ];
+        $allowed = [];
         sort($allowed);
 
         $found = [];
@@ -56,7 +54,20 @@ class ServiceModelDependencyConventionsTest extends CIUnitTestCase
                 continue;
             }
 
-            if (preg_match('/^use\s+App\\\\Models\\\\/m', $source) !== 1) {
+            // Strip comments and string literals so a mention inside a
+            // docblock (like this one) can't trigger a false positive.
+            $code = '';
+            foreach (token_get_all($source) as $token) {
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING], true)) {
+                    continue;
+                }
+                $code .= is_array($token) ? $token[1] : $token;
+            }
+
+            $bypassesModels = preg_match('/->\s*table\s*\(/', $code) === 1
+                || preg_match('/\\\\?Database\s*::\s*connect\s*\(/', $code) === 1;
+
+            if (!$bypassesModels) {
                 continue;
             }
 
@@ -68,8 +79,9 @@ class ServiceModelDependencyConventionsTest extends CIUnitTestCase
         $this->assertSame(
             $allowed,
             $found,
-            "Services with direct Model imports changed.\n" .
-            'Prefer repositories/interfaces and update this whitelist only for justified exceptions.'
+            "Services with raw query-builder/DB access changed.\n" .
+            'Extend the relevant Model with a finder/mutator instead of using $db->table()/Database::connect() ' .
+            'directly. Update this whitelist only for a narrowly-scoped, justified exception.'
         );
     }
 }

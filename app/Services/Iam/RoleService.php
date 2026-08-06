@@ -10,7 +10,8 @@ use App\DTO\Request\Iam\RoleUpdateRequestDTO;
 use App\DTO\Response\Iam\PermissionResponseDTO;
 use App\Entities\RoleEntity;
 use App\Interfaces\Iam\RoleServiceInterface;
-use CodeIgniter\Database\ConnectionInterface;
+use App\Models\PermissionModel;
+use App\Models\RolePermissionModel;
 use dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
@@ -26,7 +27,6 @@ class RoleService extends BaseCrudService implements RoleServiceInterface
 {
     /**
      * @param RepositoryInterface<RoleEntity> $roleRepository
-     * @param ConnectionInterface<object, object> $db
      */
     public function __construct(
         RepositoryInterface $roleRepository,
@@ -34,7 +34,8 @@ class RoleService extends BaseCrudService implements RoleServiceInterface
         private readonly IamAuthorizationService $authz,
         private readonly RolePermissionAssignmentService $permissionAssignment,
         private readonly \CodeIgniter\Validation\ValidationInterface $validation,
-        private readonly ConnectionInterface $db,
+        private readonly RolePermissionModel $rolePermissionModel,
+        private readonly PermissionModel $permissionModel,
         private readonly RelationLabelLoader $labels = new RelationLabelLoader()
     ) {
         parent::__construct($roleRepository, $responseMapper);
@@ -137,15 +138,7 @@ class RoleService extends BaseCrudService implements RoleServiceInterface
     {
         $this->ensureRoleExists($roleId);
 
-        $query = $this->db->table('role_permissions rp')
-            ->select('p.id, p.application_id, a.name AS application_name, p.code, p.resource, p.action, p.description, p.created_at, p.updated_at')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->join('applications a', 'a.id = p.application_id', 'left')
-            ->where('rp.role_id', $roleId)
-            ->orderBy('p.code', 'ASC')
-            ->get();
-
-        $rows = $query === false ? [] : $query->getResultArray();
+        $rows = $this->rolePermissionModel->getDetailedPermissionsForRole($roleId);
 
         return array_map(static fn (array $row) => self::permissionFromRow($row), $rows);
     }
@@ -164,41 +157,25 @@ class RoleService extends BaseCrudService implements RoleServiceInterface
             // Resolve permission codes to IDs if present
             $permissionIds = $request->permission_ids;
             if (!empty($request->permission_codes)) {
-                $resolvedQuery = $this->db->table('permissions')
-                    ->whereIn('code', $request->permission_codes)
-                    ->select('id')->get();
-                $resolvedRows = $resolvedQuery === false ? [] : $resolvedQuery->getResultArray();
-                $resolvedIds = array_map(static fn (array $r) => (int) $r['id'], $resolvedRows);
+                $resolvedIds = $this->permissionModel->findIdsByCodes(array_values($request->permission_codes));
                 $permissionIds = array_values(array_unique(array_merge($permissionIds, $resolvedIds)));
             }
 
             $this->authz->assertCanModifyRole($context, $roleId);
             $this->authz->assertCanGrantPermissions($context, $permissionIds);
 
-            $existingQuery = $this->db->table('role_permissions')
-                ->where('role_id', $roleId)
-                ->select('permission_id')->get();
-            $existing = $existingQuery === false ? [] : $existingQuery->getResultArray();
-            $existingIds = array_map(static fn (array $r) => (int) $r['permission_id'], $existing);
+            $existingIds = $this->rolePermissionModel->getPermissionIdsForRole($roleId);
 
-            $toInsert = array_diff($permissionIds, $existingIds);
+            $toInsert = array_values(array_diff($permissionIds, $existingIds));
 
             if ($toInsert !== []) {
-                $validQuery = $this->db->table('permissions')
-                    ->whereIn('id', $toInsert)
-                    ->select('id')->get();
-                $validRows = $validQuery === false ? [] : $validQuery->getResultArray();
-                $validIds = array_map(static fn (array $r) => (int) $r['id'], $validRows);
+                $validIds = $this->permissionModel->findExistingIds($toInsert);
 
                 if (count($validIds) !== count($toInsert)) {
                     throw new NotFoundException(lang('Api.resourceNotFound'));
                 }
 
-                $rows = array_map(
-                    static fn (int $pid) => ['role_id' => $roleId, 'permission_id' => $pid],
-                    $validIds
-                );
-                $this->db->table('role_permissions')->insertBatch($rows);
+                $this->rolePermissionModel->insertPairs($roleId, $validIds);
             }
 
             return $this->listPermissions($roleId);
@@ -215,10 +192,7 @@ class RoleService extends BaseCrudService implements RoleServiceInterface
             $this->authz->assertCanModifyRole($context, $roleId);
             $this->authz->assertCanGrantPermissions($context, [$permissionId]);
 
-            $this->db->table('role_permissions')
-                ->where('role_id', $roleId)
-                ->where('permission_id', $permissionId)
-                ->delete();
+            $this->rolePermissionModel->deletePair($roleId, $permissionId);
 
             return true;
         });

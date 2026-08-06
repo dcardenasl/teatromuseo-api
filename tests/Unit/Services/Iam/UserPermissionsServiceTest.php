@@ -6,11 +6,12 @@ namespace Tests\Unit\Services\Iam;
 
 use App\DTO\Request\Iam\ListUserPermissionsRequestDTO;
 use App\DTO\Response\Iam\UserPermissionsResponseDTO;
+use App\Entities\ApplicationEntity;
+use App\Entities\UserEntity;
+use App\Models\ApplicationModel;
+use App\Models\UserModel;
 use App\Services\Iam\EffectivePermissionsResolver;
 use App\Services\Iam\UserPermissionsService;
-use CodeIgniter\Database\BaseBuilder;
-use CodeIgniter\Database\BaseResult;
-use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Services;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
@@ -39,12 +40,14 @@ final class UserPermissionsServiceTest extends CIUnitTestCase
             ->with(42, 7)
             ->willReturn(['users.read', 'users.write']);
 
-        $db = $this->mockConnection([
-            'users' => [['id' => 42]],
-            'applications' => [['id' => 7, 'code' => 'blog', 'name' => 'Blog']],
-        ]);
+        $userModel = $this->createMock(UserModel::class);
+        $userModel->method('find')->with(42)->willReturn(new UserEntity(['id' => 42]));
 
-        $service = new UserPermissionsService($resolver, $db);
+        $applicationModel = $this->createMock(ApplicationModel::class);
+        $applicationModel->method('findByCode')->with('blog')
+            ->willReturn(new ApplicationEntity(['id' => 7, 'code' => 'blog', 'name' => 'Blog']));
+
+        $service = new UserPermissionsService($resolver, $userModel, $applicationModel);
         $request = new ListUserPermissionsRequestDTO(['app' => 'blog'], Services::validation(null, false));
 
         $result = $service->listForUser(42, $request);
@@ -62,9 +65,13 @@ final class UserPermissionsServiceTest extends CIUnitTestCase
         $resolver = $this->createMock(EffectivePermissionsResolver::class);
         $resolver->expects($this->never())->method('resolve');
 
-        $db = $this->mockConnection(['users' => []]);
+        $userModel = $this->createMock(UserModel::class);
+        $userModel->method('find')->with(999)->willReturn(null);
 
-        $service = new UserPermissionsService($resolver, $db);
+        $applicationModel = $this->createMock(ApplicationModel::class);
+        $applicationModel->expects($this->never())->method('findByCode');
+
+        $service = new UserPermissionsService($resolver, $userModel, $applicationModel);
         $request = new ListUserPermissionsRequestDTO(['app' => 'self'], Services::validation(null, false));
 
         $this->expectException(NotFoundException::class);
@@ -76,40 +83,16 @@ final class UserPermissionsServiceTest extends CIUnitTestCase
         $resolver = $this->createMock(EffectivePermissionsResolver::class);
         $resolver->expects($this->never())->method('resolve');
 
-        $db = $this->mockConnection([
-            'users' => [['id' => 1]],
-            'applications' => [],
-        ]);
+        $userModel = $this->createMock(UserModel::class);
+        $userModel->method('find')->with(1)->willReturn(new UserEntity(['id' => 1]));
 
-        $service = new UserPermissionsService($resolver, $db);
+        $applicationModel = $this->createMock(ApplicationModel::class);
+        $applicationModel->method('findByCode')->with('ghost')->willReturn(null);
+
+        $service = new UserPermissionsService($resolver, $userModel, $applicationModel);
         $request = new ListUserPermissionsRequestDTO(['app' => 'ghost'], Services::validation(null, false));
 
         $this->expectException(NotFoundException::class);
         $service->listForUser(1, $request);
-    }
-
-    /**
-     * @param array<string, list<array<string, mixed>>> $tableRows
-     */
-    private function mockConnection(array $tableRows): ConnectionInterface
-    {
-        $db = $this->createMock(ConnectionInterface::class);
-
-        $db->method('table')->willReturnCallback(function (string $table) use ($tableRows): BaseBuilder {
-            $rows = $tableRows[$table] ?? [];
-            $row = $rows[0] ?? null;
-
-            $result = $this->createMock(BaseResult::class);
-            $result->method('getRowArray')->willReturn($row);
-
-            $builder = $this->createMock(BaseBuilder::class);
-            $builder->method('select')->willReturnSelf();
-            $builder->method('where')->willReturnSelf();
-            $builder->method('get')->willReturn($result);
-
-            return $builder;
-        });
-
-        return $db;
     }
 }

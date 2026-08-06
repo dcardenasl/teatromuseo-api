@@ -24,7 +24,7 @@ class ApplicationPermissionsResolverTest extends ApiTestCase
         parent::setUp();
 
         $this->resolver = new ApplicationPermissionsResolver(
-            \Config\Database::connect(),
+            model(\App\Models\PermissionModel::class),
             Services::cache()
         );
     }

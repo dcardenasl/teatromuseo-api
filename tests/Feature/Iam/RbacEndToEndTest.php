@@ -25,7 +25,11 @@ final class RbacEndToEndTest extends ApiTestCase
         $this->insertPermission($appId, 'cms-wildcard.widget.read', 'widget', 'read');
         $this->insertPermission($appId, 'cms-wildcard.widget.create', 'widget', 'create');
 
-        $resolver = new EffectivePermissionsResolver(\Config\Database::connect(), Services::cache());
+        $resolver = new EffectivePermissionsResolver(
+            model(\App\Models\UserRoleModel::class),
+            model(\App\Models\PermissionModel::class),
+            Services::cache()
+        );
 
         $this->assertSame(
             ['cms-wildcard.widget.create', 'cms-wildcard.widget.read'],

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Iam;
 
 use App\Interfaces\Iam\ApplicationPermissionsResolverInterface;
+use App\Models\PermissionModel;
 use CodeIgniter\Cache\CacheInterface;
-use CodeIgniter\Database\ConnectionInterface;
 
 /**
  * Resolves the set of permission codes belonging to a given application.
@@ -19,11 +19,8 @@ class ApplicationPermissionsResolver implements ApplicationPermissionsResolverIn
 {
     private const CACHE_TTL = 60;
 
-    /**
-     * @param ConnectionInterface<object, object> $db
-     */
     public function __construct(
-        private readonly ConnectionInterface $db,
+        private readonly PermissionModel $permissionModel,
         private readonly CacheInterface $cache,
     ) {
     }
@@ -42,7 +39,7 @@ class ApplicationPermissionsResolver implements ApplicationPermissionsResolverIn
             return $cached;
         }
 
-        $codes = $this->load($applicationId);
+        $codes = $this->permissionModel->findCodesByApplication($applicationId);
         $this->cache->save($cacheKey, $codes, self::CACHE_TTL);
 
         return $codes;
@@ -51,28 +48,6 @@ class ApplicationPermissionsResolver implements ApplicationPermissionsResolverIn
     public function invalidate(int $applicationId): void
     {
         $this->cache->delete(self::cacheKey($applicationId));
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function load(int $applicationId): array
-    {
-        $query = $this->db->table('permissions')
-            ->select('code')
-            ->where('application_id', $applicationId)
-            ->orderBy('code', 'ASC')
-            ->get();
-
-        if ($query === false) {
-            return [];
-        }
-
-        $rows = $query->getResultArray();
-
-        $codes = array_map(static fn (array $row) => (string) $row['code'], $rows);
-
-        return array_values(array_unique($codes));
     }
 
     private static function cacheKey(int $applicationId): string
