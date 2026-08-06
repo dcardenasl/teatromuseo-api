@@ -20,7 +20,6 @@
 
 ### Fase 2 — Configuración y CI
 
-- [ ] **CFG-01 — `app.baseURL` de `phpunit.xml` apunta a 8080; el hub corre en 8180.**
 - [ ] **CFG-02 — 21 variables leídas y no documentadas** en `.env.example`, entre ellas
   `HUB_INTERNAL_SECRET` (secreto compartido con los 3 dominios, documentado en cero sitios),
   `LEGACY_ADMIN_TOKEN`, `CMS_DOMAIN_URL`, `CATALOG_DOMAIN_URL`, `EVENT_DOMAIN_URL`, `CORS_ALLOWED_*`.
@@ -35,12 +34,25 @@
 
 ### Fase 3 — Extracción a `ci4-api-core`
 
-- [ ] **CORE-02 — Reconciliar el boilerplate de infra** que el hub comparte con los dominios
-  (`AppExceptionHandler`, `HasCrudActions`, `AuditRepository`, `MetricModel`, `RequestLogModel`,
-  `AuditLogModel` — este último sin el `onlyEntities()` que catalog y event sí recibieron) y
-  consumirlo desde el paquete.
+- [x] ~~CORE-02 (parcial)~~ — **2026-08-06:** `app/Traits/Controllers/HasCrudActions.php` resultó
+  ser código muerto (byte-idéntico a las copias de cms/catalog/event, pero ningún controlador de
+  ninguna de las 4 apps lo usaba — el hub y los dominios necesitan `hasPermission()` por acción,
+  algo que el trait no soporta) — eliminado. `PermissionFilter` ya extendía
+  `AbstractPermissionFilter` de antes; no se le añadió `superAdminBypassCode()` a propósito — el
+  hub es la fuente autoritativa de roles/permisos, no necesita el bypass que los dominios sí (para
+  amortiguar cache de introspección desactualizada). PHPStan/tests verdes (716).
+- [ ] **CORE-02 (residual) — `AppExceptionHandler`, `AuditRepository`, `MetricModel`,
+  `RequestLogModel`, `AuditLogModel`** (sin el `onlyEntities()` que catalog y event sí tienen) y el
+  drift de esquema en las migraciones de infra siguen sin base compartida — `core:install` del
+  paquete no ayuda porque ya existe una migración con ese nombre de clase en las 4 apps.
 - [ ] **CORE-06 — Convención única de permisos.** Coordinar la migración de códigos con los roles ya
-  asignados en la BD del hub. ⚠️ Requiere ventana de mantenimiento — ver decisiones pendientes.
+  asignados en la BD del hub. **Confirmado fuera de alcance de `ci4-api-core`** — es config local en
+  cada dominio más una migración de datos aquí, en `permissions`/`role_permissions`.
+  ⚠️ **`domain:sync-permissions` es insert-if-missing, no upsert**: renombrar un código sin una
+  migración SQL manual en esta BD deja huérfanas las filas viejas de `permissions` y sus bindings
+  en `role_permissions` — los roles pierden el permiso en silencio, no se re-vinculan al código
+  nuevo. Requiere ventana de mantenimiento — ver decisiones pendientes.
+  **No tocar sin confirmación explícita.**
 
 ### Fase 4 — Coherencia de capas
 
@@ -92,6 +104,17 @@
   `AGENTS.md` que falta en este repo.
 
 ## ✅ Completadas
+
+- **CORE-02 (parcial) — `ci4-api-core` v1.2.0 → v1.3.0, `HasCrudActions` muerto eliminado
+  (2026-08-06):** subida directa (constraint `^1.0`, sin tocar `composer.json`), incluyó el fix del
+  CVE alto de `guzzlehttp/guzzle` (7.15.1 → 7.15.2, `CVE-2026-69246`/`CVE-2026-69245`) de paso.
+  `app/Traits/Controllers/HasCrudActions.php` eliminado: byte-idéntico a las copias de cms/catalog/
+  event, sin un solo consumidor real en ninguna de las 4 apps. Verificado: PHPStan sin errores,
+  716 tests / 1.995 assertions ✅.
+
+- **CFG-01 — Puerto canónico del hub (2026-08-05):** `.env.example`, `.env.docker.example`,
+  PHPUnit, Compose, CORS de desarrollo y `init.sh` ahora usan `8180`; el bootstrap pasa el puerto
+  explícitamente a `php spark serve`. Composer quality ✅.
 
 - **SEC-03 — Sustituir el escáner antivirus simulado (2026-08-05):** `ClamAvScannerService` fue
   reemplazado por `NullVirusScannerService`; con el flag apagado registra que el archivo no fue
