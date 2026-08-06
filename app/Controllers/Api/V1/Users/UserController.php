@@ -102,7 +102,7 @@ class UserController extends ApiController
             $perms = $context !== null ? $context->permissions : [];
             $assignable = Services::assignableRolesService()->listAssignable($perms);
 
-            return $this->response->setJSON(ApiResponse::success($assignable));
+            return ApiResponse::success($assignable);
         });
     }
 }

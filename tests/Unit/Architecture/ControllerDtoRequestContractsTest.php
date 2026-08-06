@@ -20,8 +20,6 @@ class ControllerDtoRequestContractsTest extends CIUnitTestCase
      */
     private const CONTROLLER_EXCEPTIONS = [
         'HealthController',
-        'SelfPermissionsController', // app-key-only endpoint; no user JWT, no DTO shape — handled as raw CI4 response
-        'RolePermissionMatrixController', // matrix endpoint; no request DTO, read-only map of roles/permissions
     ];
 
     /**
