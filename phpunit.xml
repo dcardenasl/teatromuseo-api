@@ -41,7 +41,7 @@
     </source>
 
     <php>
-        <server name="app.baseURL" value="http://localhost:8080/"/>
+        <server name="app.baseURL" value="http://localhost:8180/"/>
         <const name="HOMEPATH" value="./"/>
         <const name="CONFIGPATH" value="./app/Config/"/>
         <const name="PUBLICPATH" value="./public/"/>

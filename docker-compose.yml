@@ -7,12 +7,12 @@ services:
     container_name: ci4-api-app
     restart: unless-stopped
     ports:
-      - "${API_HOST_PORT:-8080}:80"
+      - "${API_HOST_PORT:-8180}:80"
     environment:
       # Consumed by docker/entrypoint.sh on first start to stamp .env so that
       # CI4 (which reads .env ahead of OS env) sees the Docker DB settings.
       - CI_ENVIRONMENT=${CI_ENVIRONMENT:-development}
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:8080}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:8180}
       - DB_HOST=db
       - DB_PORT=3306
       - MYSQL_DATABASE=${MYSQL_DATABASE:-ci4_website_builder_api}
