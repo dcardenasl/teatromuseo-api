@@ -11,8 +11,13 @@ namespace App\Libraries\LegacyMigration;
  */
 final class LegacySliceAAnalyzer
 {
-    public function __construct(private readonly ?LegacyAssetResolver $assetResolver = null)
-    {
+    private readonly LegacyScheduleParser $scheduleParser;
+
+    public function __construct(
+        private readonly ?LegacyAssetResolver $assetResolver = null,
+        ?LegacyScheduleParser $scheduleParser = null
+    ) {
+        $this->scheduleParser = $scheduleParser ?? new LegacyScheduleParser();
     }
 
     /**
@@ -62,6 +67,18 @@ final class LegacySliceAAnalyzer
             if (! $this->validDate($work['fecha_obra'] ?? null)) {
                 $issues[] = $this->issue('sn_obra', $legacyId, 'invalid_date', 'fecha_obra', 'Date will require review before apply.', 'warning');
             }
+            if ($this->scheduleParser->parse($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null) === null) {
+                $scheduleIssue = $this->issue(
+                    'sn_obra',
+                    $legacyId,
+                    'invalid_schedule',
+                    'hora_obra',
+                    'Schedule must contain a valid HH:MM value; the row will be quarantined during apply.',
+                    'error'
+                );
+                $scheduleIssue['original_value'] = $work['hora_obra'] ?? null;
+                $issues[] = $scheduleIssue;
+            }
             if (! $this->hasRow($tables['sn_compania'] ?? [], 'id_compania', $work['id_compania'] ?? null)) {
                 $issues[] = $this->issue('sn_obra', $legacyId, 'fk_missing', 'id_compania', 'Referenced company is not present in the selected source rows.', 'warning');
             }
@@ -71,7 +88,24 @@ final class LegacySliceAAnalyzer
 
             $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry', 'obras:' . $workKey, $sourceHash);
             $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'event', 'function:' . $workKey, $sourceHash);
-            $mappings[] = $this->mapping('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', 'sn_obra:' . $legacyId, $sourceHash);
+            $scheduleValues = $this->scheduleParser->parseMany($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null);
+            if ($scheduleValues === []) {
+                // Keep one planned occurrence mapping for invalid rows so the
+                // dry-run still accounts for the source record that will be
+                // quarantined during apply.
+                $scheduleValues = [''];
+            }
+            foreach (array_keys($scheduleValues) as $scheduleIndex) {
+                $mappingId = $scheduleIndex === 0 ? $legacyId : $legacyId . ':schedule:' . $scheduleIndex;
+                $mappings[] = $this->mapping(
+                    'sn_obra',
+                    $mappingId,
+                    LegacyMigrationCatalog::TARGET_EVENT,
+                    'occurrence',
+                    'sn_obra:' . $mappingId,
+                    $sourceHash
+                );
+            }
 
             $asset = $this->asset((string) ($work['foto_obra'] ?? ''));
             $assets[] = $asset + ['legacy_table' => 'sn_obra', 'legacy_id' => $legacyId, 'field' => 'foto_obra'];
@@ -247,7 +281,10 @@ final class LegacySliceAAnalyzer
                 'targets_planned' => [
                     'cms_entries' => count($companyById) + count($workGroups) + count($videoGroups),
                     'event_events' => count($workGroups),
-                    'event_occurrences' => count($selectedWorks),
+                    'event_occurrences' => count(array_filter(
+                        $mappings,
+                        static fn (array $mapping): bool => $mapping['target_type'] === 'occurrence'
+                    )),
                     'cms_gallery_items' => $galleryCount,
                 ],
                 'issues' => count($issues),

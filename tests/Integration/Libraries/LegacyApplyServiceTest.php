@@ -866,6 +866,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 3, 'collection_key' => 'videos'],
                 ['id' => 4, 'collection_key' => 'personas'],
                 ['id' => 5, 'collection_key' => 'cursos'],
+                ['id' => 9, 'collection_key' => 'teatroescuela'],
                 ['id' => 6, 'collection_key' => 'festivales'],
                 ['id' => 7, 'collection_key' => 'noticias'],
                 ['id' => 8, 'collection_key' => 'publicaciones'],
@@ -916,6 +917,10 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
         }
 
         if (preg_match('#^/events/events/(\d+)$#', $path, $matches) === 1) {
+            return ['data' => ['id' => (int) $matches[1]]];
+        }
+
+        if (preg_match('#^/events/occurrences/(\d+)$#', $path, $matches) === 1) {
             return ['data' => ['id' => (int) $matches[1]]];
         }
 

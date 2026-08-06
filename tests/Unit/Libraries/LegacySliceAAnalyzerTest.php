@@ -83,4 +83,22 @@ final class LegacySliceAAnalyzerTest extends TestCase
         $this->assertSame(LegacyMigrationCatalog::MAP_QUARANTINED, $report['mappings'][0]['status']);
         $this->assertSame('sn_slider_cartelera', $report['quarantine'][0]['legacy_table']);
     }
+
+    public function testLegacyScheduleSuffixIsAcceptedAndInvalidScheduleIsReported(): void
+    {
+        $report = (new LegacySliceAAnalyzer())->analyze([
+            'sn_obra' => [
+                ['id_obra' => '1', 'titulo_obra' => 'Función válida', 'fecha_obra' => '2026-08-15', 'hora_obra' => '16:30 hrs', 'display' => '1'],
+                ['id_obra' => '2', 'titulo_obra' => 'Función inválida', 'fecha_obra' => '2026-08-16', 'hora_obra' => 'sin hora', 'display' => '1'],
+            ],
+        ], '/tmp/fixture.sql', str_repeat('a', 64));
+
+        $invalid = array_values(array_filter(
+            $report['issues'],
+            static fn (array $issue): bool => $issue['issue_class'] === 'invalid_schedule'
+        ));
+
+        $this->assertCount(1, $invalid);
+        $this->assertSame('sin hora', $invalid[0]['original_value']);
+    }
 }

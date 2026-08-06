@@ -36,9 +36,13 @@ final class LegacyApplyService
         private readonly LegacyDomainClientInterface $event,
         private readonly LegacyDomainClientInterface $hub,
         private readonly ?LegacyAssetResolver $assetResolver = null,
-        private readonly string $sourceHash = ''
+        private readonly string $sourceHash = '',
+        ?LegacyScheduleParser $scheduleParser = null
     ) {
+        $this->scheduleParser = $scheduleParser ?? new LegacyScheduleParser();
     }
+
+    private readonly LegacyScheduleParser $scheduleParser;
 
     /**
      * @param array<string, list<array<string, mixed>>> $tables
@@ -633,7 +637,6 @@ final class LegacyApplyService
             return $existing;
         }
 
-        $start = $this->dateTime($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null);
         $description = $this->stringValue($work['descripcion_larga_obra'] ?? $work['descripcion_corta_obra'] ?? '');
         if ($description === '') {
             $description = $this->stringValue($work['titulo_obra'] ?? 'Función');
@@ -643,11 +646,6 @@ final class LegacyApplyService
             'title' => $this->stringValue($work['titulo_obra'] ?? 'Función'),
             'event_type' => 'function',
             'description' => $description,
-            'start_time' => $start,
-            'end_time' => $this->plusHours($start, 2),
-            'venue' => $this->stringValue($work['direccion_obra'] ?? ''),
-            'capacity' => null,
-            'available_spots' => null,
             'status' => 'scheduled',
             'cover_file_id' => $featuredFileId,
         ]);
@@ -733,25 +731,55 @@ final class LegacyApplyService
     /** @param array<string, mixed> $work */
     private function applyOccurrence(array $work, int $eventId, string $legacyId, int $runId): void
     {
+        $starts = $this->scheduleParser->parseMany($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null);
+        if ($starts === []) {
+            $this->summary['issues']++;
+            $this->repository->recordIssue($this->currentRunId, 'sn_obra', $legacyId, 'invalid_schedule', null, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', null, 'hora_obra', $work['hora_obra'] ?? null, null, 'Occurrence was not created or updated because the legacy date/time is invalid or empty.', 'error');
+            $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', null, LegacyMigrationCatalog::MAP_QUARANTINED, 'invalid legacy date/time');
+            return;
+        }
+
+        foreach ($starts as $index => $start) {
+            $scheduleId = $index === 0 ? $legacyId : $legacyId . ':schedule:' . $index;
+            $this->upsertOccurrence($eventId, $scheduleId, $start, $runId);
+        }
+    }
+
+    private function upsertOccurrence(int $eventId, string $legacyId, string $start, int $runId): void
+    {
+        $end = $this->plusHours($start, 2);
+        if ($end === null) {
+            $this->summary['issues']++;
+            return;
+        }
+
         $mapped = $this->repository->findMap('sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence');
         if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
+            $occurrenceId = (int) $mapped['target_id'];
+            $this->event->put('/events/occurrences/' . $occurrenceId, [
+                'start_time' => $start,
+                'end_time' => $end,
+            ]);
             $this->summary['reused']['occurrences']++;
             return;
         }
-        if ($mapped !== null && ($mapped['status'] ?? null) === LegacyMigrationCatalog::MAP_QUARANTINED && (string) ($mapped['source_hash'] ?? '') === $this->sourceHash) {
-            $this->summary['issues']++;
-            return;
-        }
-        $start = $this->dateTime($work['fecha_obra'] ?? null, $work['hora_obra'] ?? null);
-        if ($start === null) {
-            $this->summary['issues']++;
-            $this->repository->recordIssue($this->currentRunId, 'sn_obra', $legacyId, 'invalid_date', null, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', null, 'fecha_obra', $work['fecha_obra'] ?? null, null, 'Occurrence was not created because the legacy date is invalid or empty.', 'warning');
-            $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', null, LegacyMigrationCatalog::MAP_QUARANTINED, 'invalid legacy date');
-            return;
-        }
-        $end = $this->plusHours($start, 2) ?? $start;
         $existing = $this->findOccurrence($eventId, $start, $end);
+        $recoveredFromMidnight = false;
+        if ($existing === null && $mapped !== null && $this->positiveId($mapped['target_id'] ?? null) === null) {
+            // Earlier runs quarantined malformed rows without a target. If a
+            // later parser version can now normalize the value, reuse the
+            // old midnight row by event and date instead of leaving an orphan
+            // and creating a duplicate occurrence.
+            $existing = $this->findOccurrenceByDate($eventId, $start);
+            $recoveredFromMidnight = $existing !== null;
+        }
         if ($existing !== null) {
+            if ($recoveredFromMidnight) {
+                $this->event->put('/events/occurrences/' . $existing, [
+                    'start_time' => $start,
+                    'end_time' => $end,
+                ]);
+            }
             $this->map($runId, 'sn_obra', $legacyId, LegacyMigrationCatalog::TARGET_EVENT, 'occurrence', (string) $existing, LegacyMigrationCatalog::MAP_MAPPED, 'recovered by deterministic event/time lookup');
             $this->summary['reused']['occurrences']++;
             return;
@@ -1099,6 +1127,32 @@ final class LegacyApplyService
         return null;
     }
 
+    private function findOccurrenceByDate(int $eventId, string $start): ?int
+    {
+        $date = substr($start, 0, 10);
+        $page = 1;
+        do {
+            $response = $this->event->get('/events/occurrences', ['per_page' => 100, 'page' => $page]);
+            foreach ($this->list($response) as $item) {
+                if ((int) ($item['event_id'] ?? 0) !== $eventId) {
+                    continue;
+                }
+                $candidateStart = $this->stringValue($item['start_time'] ?? '');
+                if (substr($candidateStart, 0, 10) !== $date || substr($candidateStart, 11, 8) !== '00:00:00') {
+                    continue;
+                }
+                $id = $this->positiveId($item['id'] ?? null);
+                if ($id !== null) {
+                    return $id;
+                }
+            }
+            $lastPage = max(1, (int) ($response['meta']['last_page'] ?? 1));
+            $page++;
+        } while ($page <= $lastPage);
+
+        return null;
+    }
+
     private function findCmsBlock(int $entryId, int $blockId, ?int $parentId, int $sortOrder, ?int $fileId, string $ownerType = 'entry'): ?int
     {
         $cacheKey = $ownerType . ':' . $entryId;
@@ -1340,20 +1394,6 @@ final class LegacyApplyService
         }
         $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
         return $parsed !== false && $parsed->format('Y-m-d') === $date;
-    }
-
-    private function dateTime(mixed $date, mixed $time): ?string
-    {
-        if (! $this->validDate($date)) {
-            return null;
-        }
-        $timeValue = $this->stringValue($time);
-        if ($timeValue === '' || ! preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $timeValue)) {
-            $timeValue = '00:00:00';
-        } elseif (strlen($timeValue) === 5) {
-            $timeValue .= ':00';
-        }
-        return $this->stringValue($date) . ' ' . $timeValue;
     }
 
     private function plusHours(?string $dateTime, int $hours): ?string
