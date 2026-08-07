@@ -77,6 +77,64 @@
 
 ## ✅ Completadas
 
+- **LEGACY-MAP-034 — Sync incremental del dump legacy (v6) + 2 bugs de drift en el ETL
+  (2026-08-07):** David compartió un dump más reciente (`docs/cte70303_wp440 (6).sql`, 6 días
+  después del último dump completo). Diff por PK entre ambos dumps (nuevo comando ad-hoc
+  `legacy:diff-dumps --old <a> --new <b>`, no versionado como parte del motor) mostró exactamente
+  6 filas nuevas en `sn_obra` (cartelera), 1 en `sn_noticias`, 1 en `sn_editorial` y 1 en
+  `sn_compania` (referenciada por una de las obras nuevas) — cero filas modificadas en ninguna
+  tabla. `legacy:apply --slice A/C --confirm` contra el dump nuevo (idempotente vía
+  `legacy_migration_map`) trajo solo esos ítems nuevos sin tocar nada migrado antes. En el camino
+  se encontraron y corrigieron **2 bugs reales de drift** en `LegacyApplyService`, expuestos
+  recién ahora porque es la primera vez desde el saneamiento arquitectónico de Fase 3/4
+  (2026-08-06) que el ETL necesita *crear* contenido nuevo en vez de solo reusar lo ya mapeado:
+  1. `applyWorks()` seguía apuntando a la colección `obras`, desactivada (`is_active=0`) cuando
+     `cartelera` quedó como canónica — cambiado a `'cartelera'`.
+  2. `applyPublicaciones()` seguía apuntando a la colección `publicaciones`, también desactivada
+     tras dividirse en `editoriales`/`prensa`/`transparencia` — ahora resuelve la colección por
+     `publication_type`. La entrada ya creada bajo la colección vieja (id de entry 942) se movió
+     vía `PUT collection_id=11`.
+  9 imágenes/PDF nuevos (no estaban en el mirror local `teatromuseo_webapp_php/`, subidos a
+  producción después del último snapshot) descargados de `teatromuseo.cl` con autorización de
+  David antes de aplicar. Contenido resultante quedó en `draft`/`scheduled` por diseño
+  (LEGACY-MAP-027) — publicado (`workflow_status`/`status=published`) con confirmación explícita
+  de David, mismo criterio que la migración completa. Verificado en vivo contra los endpoints
+  públicos (`/public/events`, `/public/{lang}/entries/{collection}`): las 6 obras, la noticia y
+  la publicación aparecen correctamente. Tests actualizados (`LegacyApplyServiceTest`: fixture de
+  colecciones fake ajustada a `cartelera`/`editoriales`/`prensa`/`transparencia`) — 15/15 ✅,
+  suite completa Unit+Integration 597/597 ✅, PHPStan limpio, CS-Fixer limpio.
+
+  **Continuación same-day — bug de `published_at` (3er hallazgo de drift):** David preguntó si
+  `sn_noticias` tiene una fecha de creación utilizable para el orden cronológico de la colección
+  `noticias`. Sí la tiene (`fecha`), pero `applyCmsEntry()` hardcodeaba `published_at => null` en
+  todo create pese a que `applyNoticias()`/`applyPublicaciones()` ya computaban `wizard_extra.
+  publish_date` desde `fecha` — ese valor nunca llegaba a ningún campo real, se descartaba en
+  silencio. Confirmado en BD: las 70 entradas `noticias` ya migradas tenían `published_at ==
+  created_at` (el timestamp exacto de la corrida de publicación masiva LEGACY-MAP-027, 2026-08-01),
+  osea orden esencialmente arbitrario, no cronológico real. Fix: nuevo parámetro `?string
+  $publishedAt` en `applyCmsEntry()`, usado por ambos callers. **Efecto secundario real
+  encontrado al verificar en vivo:** el listado público filtra `published_at IS NULL OR
+  published_at <= NOW()` — la noticia recién migrada (`fecha=2026-08-23`, la fecha de la
+  *actividad futura* que anuncia, no de cuándo se escribió) quedó oculta del sitio al fijarle
+  `published_at` en el futuro. Agregado `clampToToday()` (nunca publicar en el futuro) tanto en
+  `applyCmsEntry()` como en el comando de backfill — cubierto con test de regresión dedicado.
+  Backfill real ejecutado contra las 70 entradas `noticias` ya migradas + la nueva (comando ad-hoc
+  `legacy:backfill-published-at --table sn_noticias --dump <path> --admin-token-file <path>
+  --confirm`, no versionado): ahora ordenan 2017→2026 en vivo, verificado contra
+  `/public/es/entries/noticias?order_by=published_at`. Igual bug pendiente en `editoriales`/
+  `prensa`/`transparencia` (mismo `applyCmsEntry()`, mismo `sn_editorial/sn_prensa/
+  sn_administracion.fecha` sin usar hasta hoy) — el comando de backfill ya soporta esas tablas via
+  `--table`, pendiente de que David confirme si también quiere ese backfill. Test de regresión
+  agregado (`testNewsAndPublicationsUseLegacyFechaAsPublishedAtInsteadOfMigrationTimestamp`,
+  cubre fecha pasada y fecha futura) — 16/16 `LegacyApplyServiceTest` ✅, PHPStan/CS-Fixer limpios.
+  **Nota aparte, resuelta el mismo día en sesión posterior:** la suite completa mostró 7 fallos
+  preexistentes no relacionados (`JwtAuthFilterTest`, `HealthCheckerTest`, `AppProxyIPsTest`)
+  causados por un `app/Config/App.php` con cambios sin commitear ya presentes antes de esta sesión
+  (`defaultLocale` en `es` en vez de `en`, contenido que resultó ser una copia accidental —
+  byte-a-byte casi idéntica — del `App.php` de `teatromuseo-web`, ya commiteado y limpio ahí).
+  Confirmado con David que no correspondía a ningún trabajo real pendiente en este repo y revertido
+  (`git checkout -- app/Config/App.php`) antes del flujo de commits de esta sesión.
+
 - **CFG-05 — Gate de calidad alineado con la flota (checkbox reconciliado 2026-08-07):**
   `composer.json` ya tiene `coverage:check` apuntando a `tests/coverage/clover.xml` con umbral
   60 %, y CI (`876cb9e`) invoca `composer quality` como gate único en vez de pasos sueltos —
