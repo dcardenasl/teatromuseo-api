@@ -473,7 +473,8 @@ final class LegacyApplyService
         string $excerpt,
         array $wizardExtra,
         int $runId,
-        ?int $featuredFileId = null
+        ?int $featuredFileId = null,
+        ?string $publishedAt = null
     ): int {
         $mapped = $this->repository->findMap($legacyTable, $legacyId, LegacyMigrationCatalog::TARGET_CMS, 'entry');
         if ($mapped !== null && $this->positiveId($mapped['target_id'] ?? null) !== null) {
@@ -532,7 +533,7 @@ final class LegacyApplyService
             'collection_id' => $collectionId,
             'author_id' => null,
             'workflow_status' => 'draft',
-            'published_at' => null,
+            'published_at' => $publishedAt !== null ? $this->clampToToday($publishedAt) . ' 00:00:00' : null,
             'scheduled_at' => null,
             'is_featured' => false,
             'view_count' => 0,
@@ -1396,6 +1397,18 @@ final class LegacyApplyService
         return $parsed !== false && $parsed->format('Y-m-d') === $date;
     }
 
+    /**
+     * `sn_noticias.fecha`/`sn_editorial.fecha` etc. sometimes hold the date of
+     * a future activity the entry announces, not when the entry itself was
+     * written — feeding that straight into `published_at` would make the
+     * public listing's `published_at <= NOW()` visibility gate hide it until
+     * that date arrives. Never publish an entry in the future.
+     */
+    private function clampToToday(string $date): string
+    {
+        return $date > date('Y-m-d') ? date('Y-m-d') : $date;
+    }
+
     private function plusHours(?string $dateTime, int $hours): ?string
     {
         if ($dateTime === null) {
@@ -1744,8 +1757,9 @@ final class LegacyApplyService
             // creating a second, redundant rich_text block by hand (the shape this
             // code used before the JsonCastNormalizer fix made wizard_extra
             // matching actually work — see LEGACY-MAP-015).
+            $publishDate = $this->validDate($news['fecha'] ?? null) ? $this->stringValue($news['fecha']) : null;
             $wizardExtra = [
-                'publish_date' => $this->validDate($news['fecha'] ?? null) ? $this->stringValue($news['fecha']) : null,
+                'publish_date' => $publishDate,
                 'lead' => $this->stringValue($news['lead'] ?? ''),
                 'content' => $this->stringValue($news['cuerpo'] ?? ''),
             ];
@@ -1759,7 +1773,8 @@ final class LegacyApplyService
                 $this->stringValue($news['lead'] ?? ''),
                 $wizardExtra,
                 $runId,
-                $coverFileId
+                $coverFileId,
+                $publishDate
             );
         }
     }
@@ -1771,6 +1786,11 @@ final class LegacyApplyService
             'sn_editorial' => 'editorial',
             'sn_prensa' => 'press',
             'sn_administracion' => 'transparency',
+        ];
+        $pubCollections = [
+            'editorial' => 'editoriales',
+            'press' => 'prensa',
+            'transparency' => 'transparencia',
         ];
 
         foreach ($pubSources as $table => $type) {
@@ -1791,22 +1811,24 @@ final class LegacyApplyService
                     $coverFileId = $this->assetFile($table, $id, $coverPath, 'pub-cover-' . $id, $runId);
                 }
 
+                $publishDate = $this->validDate($pub['fecha'] ?? null) ? $this->stringValue($pub['fecha']) : null;
                 $wizardExtra = [
                     'publication_type' => $type,
-                    'publish_date' => $this->validDate($pub['fecha'] ?? null) ? $this->stringValue($pub['fecha']) : null,
+                    'publish_date' => $publishDate,
                     'external_link' => $this->stringValue($pub['link'] ?? ''),
                 ];
 
                 $entryId = $this->applyCmsEntry(
                     $table,
                     $id,
-                    'publicaciones',
+                    $pubCollections[$type],
                     $slug,
                     $this->stringValue($pub['titulo'] ?? 'Publicación'),
                     $this->stringValue($pub['descripcion'] ?? ''),
                     $wizardExtra,
                     $runId,
-                    $coverFileId
+                    $coverFileId,
+                    $publishDate
                 );
 
                 $pdfPath = $this->stringValue($pub['archivo'] ?? '');

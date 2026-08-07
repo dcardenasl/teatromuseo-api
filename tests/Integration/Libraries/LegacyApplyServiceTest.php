@@ -598,7 +598,7 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
 
         $entries = $client->payloads('/cms/entries');
         $this->assertCount(1, $entries);
-        $this->assertSame(6, $entries[0]['collection_id']); // 'festivales', not 'obras' (id 2)
+        $this->assertSame(6, $entries[0]['collection_id']); // 'festivales', not 'cartelera' (id 2)
         $this->assertSame('animate-2024', $entries[0]['translations'][0]['slug']);
         $this->assertSame('IX Encuentro Internacional de Títeres Animate', $entries[0]['translations'][0]['title']);
 
@@ -642,6 +642,45 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $summary = $service->apply('C', $tables, '/tmp/news-scale-fixture.sql', $runId);
 
         $this->assertSame(25 + 45, $summary['created']['cms_entries']); // 25 news + 45 publications (15+15+15)
+    }
+
+    public function testNewsAndPublicationsUseLegacyFechaAsPublishedAtInsteadOfMigrationTimestamp(): void
+    {
+        // Regression for LEGACY-MAP-034: applyCmsEntry() used to hardcode
+        // published_at=null on every create, so the CMS listing's date-order
+        // fell back to created_at — the migration run's timestamp, not the
+        // real legacy date. sn_noticias.fecha (and sn_editorial/sn_prensa/
+        // sn_administracion.fecha) must land in published_at.
+        $hash = hash('sha256', 'legacy-published-at-fixture');
+        $futureDate = date('Y-m-d', strtotime('+30 days'));
+        $tables = [
+            'sn_noticias' => [
+                ['id_noticias' => '990', 'titulo' => 'Noticia con fecha', 'url' => 'noticia-990', 'lead' => 'Lead', 'cuerpo' => 'Cuerpo', 'fecha' => '2019-05-14'],
+                // sn_noticias.fecha sometimes holds the date of a future activity the
+                // entry announces, not when it was written — must never publish ahead
+                // of today or the public listing's published_at <= NOW() gate hides it.
+                ['id_noticias' => '992', 'titulo' => 'Noticia de actividad futura', 'url' => 'noticia-992', 'lead' => 'Lead', 'cuerpo' => 'Cuerpo', 'fecha' => $futureDate],
+            ],
+            'sn_editorial' => [
+                ['id' => '991', 'titulo' => 'Editorial con fecha', 'url' => 'editorial-991', 'fecha' => '2018-03-02'],
+            ],
+        ];
+
+        $client = new LegacyApplyRecordingClient();
+        $repository = new LegacyMigrationRepository($this->db);
+        $service = new LegacyApplyService($repository, $client, $client, $client, null, $hash);
+        $runId = $repository->createRun('legacy-published-at-fixture', LegacyMigrationCatalog::MODE_APPLY, '/tmp/published-at-fixture.sql', $hash);
+
+        $service->apply('C', $tables, '/tmp/published-at-fixture.sql', $runId);
+
+        $entries = $client->payloads('/cms/entries');
+        $news = current(array_filter($entries, static fn (array $e): bool => $e['translations'][0]['slug'] === 'noticia-990'));
+        $futureNews = current(array_filter($entries, static fn (array $e): bool => $e['translations'][0]['slug'] === 'noticia-992'));
+        $editorial = current(array_filter($entries, static fn (array $e): bool => $e['translations'][0]['slug'] === 'editorial-991'));
+
+        $this->assertSame('2019-05-14 00:00:00', $news['published_at']);
+        $this->assertSame(date('Y-m-d') . ' 00:00:00', $futureNews['published_at']);
+        $this->assertSame('2018-03-02 00:00:00', $editorial['published_at']);
     }
 
     public function testAppliesPageSliderSlidesForNosotrosAndHistoria(): void
@@ -869,7 +908,9 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
                 ['id' => 9, 'collection_key' => 'teatroescuela'],
                 ['id' => 6, 'collection_key' => 'festivales'],
                 ['id' => 7, 'collection_key' => 'noticias'],
-                ['id' => 8, 'collection_key' => 'publicaciones'],
+                ['id' => 8, 'collection_key' => 'editoriales'],
+                ['id' => 15, 'collection_key' => 'prensa'],
+                ['id' => 16, 'collection_key' => 'transparencia'],
             ]]],
             '/cms/languages' => ['data' => ['items' => [['id' => 1, 'code' => 'es']]]],
             '/cms/block-types' => ['data' => ['items' => [
