@@ -40,13 +40,13 @@ class FilesAuditCommand extends BaseCommand
         // 1. Load all records from database `files`
         $db = Database::connect();
         $builder = $db->table('files');
-        $queryResult = $builder->select('id, file_path, original_name')->get();
-        /** @var list<array{id: int, file_path: string, original_name: string}> $dbFiles */
+        $queryResult = $builder->select('id, path, original_name')->get();
+        /** @var list<array{id: int, path: string, original_name: string}> $dbFiles */
         $dbFiles = $queryResult !== false ? $queryResult->getResultArray() : [];
 
         $dbPaths = [];
         foreach ($dbFiles as $row) {
-            $dbPaths[$row['file_path']] = $row['id'];
+            $dbPaths[$row['path']] = $row['id'];
         }
 
         CLI::write(sprintf('Total database records in `files`: %d', count($dbFiles)), 'yellow');
@@ -84,7 +84,7 @@ class FilesAuditCommand extends BaseCommand
         // 4. Find DB records without physical disk file
         $missingOnDisk = [];
         foreach ($dbFiles as $row) {
-            $path = $row['file_path'];
+            $path = $row['path'];
             if (!isset($diskFiles[$path])) {
                 $missingOnDisk[] = $row;
             }
@@ -115,7 +115,7 @@ class FilesAuditCommand extends BaseCommand
             $count = 0;
             foreach ($missingOnDisk as $row) {
                 if ($count++ < 10) {
-                    CLI::write(sprintf('     - ID #%d: %s (%s)', $row['id'], $row['file_path'], $row['original_name']), 'white');
+                    CLI::write(sprintf('     - ID #%d: %s (%s)', $row['id'], $row['path'], $row['original_name']), 'white');
                 }
             }
             if (count($missingOnDisk) > 10) {
