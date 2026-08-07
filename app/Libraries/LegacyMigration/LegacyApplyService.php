@@ -146,7 +146,7 @@ final class LegacyApplyService
             $entryId = $this->applyCmsEntry(
                 'sn_obra',
                 $canonicalId,
-                'obras',
+                'cartelera',
                 $workKey,
                 $this->stringValue($canonical['titulo_obra'] ?? 'Obra'),
                 $this->stringValue($canonical['descripcion_larga_obra'] ?? $canonical['descripcion_corta_obra'] ?? ''),

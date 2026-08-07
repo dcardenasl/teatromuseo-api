@@ -862,7 +862,7 @@ final class LegacyApplyRecordingClient implements LegacyDomainClientInterface
         return match ($path) {
             '/cms/collections' => ['data' => ['items' => [
                 ['id' => 1, 'collection_key' => 'companias'],
-                ['id' => 2, 'collection_key' => 'obras'],
+                ['id' => 2, 'collection_key' => 'cartelera'],
                 ['id' => 3, 'collection_key' => 'videos'],
                 ['id' => 4, 'collection_key' => 'personas'],
                 ['id' => 5, 'collection_key' => 'cursos'],
