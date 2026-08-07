@@ -20,7 +20,7 @@ For cross-repo context (current milestone, blocked tasks), read `../TASKS.md`.
 
 ### Development Server
 ```bash
-php spark serve                  # Start dev server at http://localhost:8080
+php spark serve                  # Start dev server at http://localhost:8180
 ```
 
 ### Testing
@@ -226,7 +226,7 @@ In non-TTY environments (Claude Code, CI/CD, parallel calls), `php spark make:cr
 Adding a new route file (`app/Config/Routes/v1/{domain}.php`) requires restarting `php spark serve`. Routes are not detected hot.
 
 ```bash
-pkill -f 'spark serve'; php spark serve --port 8080 &
+pkill -f 'spark serve'; php spark serve --port 8180 &
 ```
 
 ## Adding a Gallery to a Domain
