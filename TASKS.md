@@ -25,9 +25,7 @@
   `LEGACY_ADMIN_TOKEN`, `CMS_DOMAIN_URL`, `CATALOG_DOMAIN_URL`, `EVENT_DOMAIN_URL`, `CORS_ALLOWED_*`.
   Resolver además la colisión `FILES_USER_SCOPED` vs `FILE_USER_SCOPED_FILES` (dos banderas
   casi idénticas, ambas declaradas).
-- [ ] **CFG-05 — Alinear el gate de calidad** con la política única de la flota (umbral de cobertura
-  actual 47,15 %; CI reimplementa el gate como pasos sueltos en vez de invocar `composer quality`,
-  y ya divergió: CI corre `composer audit`, `quality` no).
+- [x] ~~CFG-05~~ — **completado (fecha real no registrada; verificado 2026-08-07).** Ver Completadas.
 - [ ] **CFG-08 — `ci4-api-scaffolding` está en v1.0.0**, una minor por detrás de los tres dominios
   (cms/catalog v1.1.1, event v1.1.2). Retirar además el paso muerto de CI
   `scripts/ci-strip-local-repos.php`: ninguna app tiene la clave `repositories`.
@@ -78,6 +76,13 @@
   `AGENTS.md` que falta en este repo.
 
 ## ✅ Completadas
+
+- **CFG-05 — Gate de calidad alineado con la flota (checkbox reconciliado 2026-08-07):**
+  `composer.json` ya tiene `coverage:check` apuntando a `tests/coverage/clover.xml` con umbral
+  60 %, y CI (`876cb9e`) invoca `composer quality` como gate único en vez de pasos sueltos —
+  ya no diverge del audit paralelo (`composer audit` corría por separado, ahora unificado). El
+  47,15 % citado en la descripción original de la tarea es una cifra obsoleta de antes de este
+  fix; solo se corrige la casilla, el trabajo ya estaba hecho y pusheado.
 
 - **DATA-01 — `php spark files:audit` completo con las tres listas (2026-08-07):** además de
   disco↔`files`/`files`↔disco (ya existentes), se agregó `--check-references`, que consulta
