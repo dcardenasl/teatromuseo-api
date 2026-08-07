@@ -17,10 +17,17 @@ class FilesAuditCommand extends BaseCommand
     protected $group = 'Files';
     protected $name = 'files:audit';
     protected $description = 'Audits physical disk files against database records in files table';
-    protected $usage = 'php spark files:audit';
+    protected $usage = 'php spark files:audit [--check-references]';
+
+    /** @var array<string, string> */
+    protected $options = [
+        '--check-references' => 'Queries domain apps to check if DB files are actually in use.',
+    ];
 
     public function run(array $params): void
     {
+        $checkReferences = (bool) (isset($params['check-references']) || CLI::getOption('check-references'));
+
         CLI::write('Filesystem & Database Storage Audit (Read-Only)', 'cyan');
         CLI::write(str_repeat('=', 60), 'cyan');
 
@@ -90,8 +97,37 @@ class FilesAuditCommand extends BaseCommand
             }
         }
 
+        // 5. Find DB files with no domain references
+        $unreferencedFiles = [];
+        if ($checkReferences && !empty($dbFiles)) {
+            CLI::write('Checking domain references for all DB files...', 'yellow');
+            $client = \Config\Services::domainFileUsageClient();
+
+            $total = count($dbFiles);
+            $current = 0;
+
+            foreach ($dbFiles as $row) {
+                $current++;
+                $fileId = (int)$row['id'];
+
+                if ($current % 50 === 0 || $current === $total) {
+                    CLI::print(sprintf("\r   Progress: %d/%d files checked...", $current, $total));
+                }
+
+                try {
+                    $usages = $client->collectUsages($fileId);
+                    if (empty($usages)) {
+                        $unreferencedFiles[] = $row;
+                    }
+                } catch (\Throwable $e) {
+                    // Fail-safe
+                }
+            }
+            CLI::print("\n");
+        }
+
         // Report Findings
-        CLI::write('\n1. Physical files on disk with NO database record:', 'yellow');
+        CLI::write("\n1. Physical files on disk with NO database record:", 'yellow');
         if (empty($untrackedOnDisk)) {
             CLI::write('   ✓ None (all disk files are tracked in database)', 'green');
         } else {
@@ -107,7 +143,7 @@ class FilesAuditCommand extends BaseCommand
             }
         }
 
-        CLI::write('\n2. Database records with MISSING physical disk files:', 'yellow');
+        CLI::write("\n2. Database records with MISSING physical disk files:", 'yellow');
         if (empty($missingOnDisk)) {
             CLI::write('   ✓ None (all database records exist on disk)', 'green');
         } else {
@@ -123,7 +159,28 @@ class FilesAuditCommand extends BaseCommand
             }
         }
 
-        CLI::write('\n' . str_repeat('=', 60), 'cyan');
+        if ($checkReferences) {
+            CLI::write("\n3. Database files with NO domain references (orphaned assets):", 'yellow');
+            if (empty($unreferencedFiles)) {
+                CLI::write('   ✓ None (all DB files are referenced by at least one domain)', 'green');
+            } else {
+                CLI::write(sprintf('   ✗ Found %d unreferenced DB files:', count($unreferencedFiles)), 'red');
+                $count = 0;
+                foreach ($unreferencedFiles as $row) {
+                    if ($count++ < 10) {
+                        CLI::write(sprintf('     - ID #%d: %s (%s)', $row['id'], $row['path'], $row['original_name']), 'white');
+                    }
+                }
+                if (count($unreferencedFiles) > 10) {
+                    CLI::write(sprintf('     ... and %d more', count($unreferencedFiles) - 10), 'gray');
+                }
+            }
+        } else {
+            CLI::write("\n3. Domain references check skipped.", 'yellow');
+            CLI::write('   (Use `php spark files:audit --check-references` to query domain applications)', 'gray');
+        }
+
+        CLI::write("\n" . str_repeat('=', 60), 'cyan');
         CLI::write('Audit Summary Complete.', 'green');
     }
 }
