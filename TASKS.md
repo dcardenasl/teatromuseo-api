@@ -65,11 +65,6 @@
   Igual la cadena `CreateRolesTable` → `AddIsSelfAssignableToRoles` → `DropApplicationIdFromRoles`.
 - [ ] **MIG-03 — `app/Database/Seeds/UsersLoadTestSeeder.php`** es un generador con faker para
   pruebas de carga viviendo en el directorio de seeds de producción. Mover a `tests/` o eliminar.
-- [ ] **DATA-01 — Construir `php spark files:audit`** (solo reporta, **no borra**). Hoy no existe
-  ninguna forma de saber qué está huérfano en los 9.110 archivos / 2,0 GB de `writable/uploads`
-  (1.811 son variantes regenerables vía `RegenerateFileVariants`). Tres listas:
-  archivos en disco sin fila en `files`, filas sin archivo en disco, y filas que ningún dominio
-  referencia (consultando los `FileUsageService` de cms/catalog/event vía endpoint interno).
 - [ ] **HYG-01 — Purgar y rotar `writable/debugbar` (1,4 GB) y `writable/logs` (49 MB).**
   Verificar que el toolbar solo escribe en `CI_ENVIRONMENT=development`.
 
@@ -84,6 +79,11 @@
 
 ## ✅ Completadas
 
+- **DATA-01 — `php spark files:audit` completo con las tres listas (2026-08-07):** además de
+  disco↔`files`/`files`↔disco (ya existentes), se agregó `--check-references`, que consulta
+  `DomainFileUsageClient::collectUsages()` por cada fila de `files` para reportar archivos que
+  ningún dominio referencia. También se corrigió un bug preexistente: el comando leía la columna
+  `file_path` (no existe) en vez de `path` (columna real de la tabla `files`).
 - **LAYER-02 — Los 5 controladores identificados ahora pasan por el flujo DTO-first (2026-08-06):**
   `Iam/SelfPermissionsController` ya no lee JSON crudo ni instancia modelos: nuevo
   `SelfPermissionsRequestDTO` + `Services::selfPermissionService()`, controlador reducido a
