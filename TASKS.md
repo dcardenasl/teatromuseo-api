@@ -20,11 +20,7 @@
 
 ### Fase 2 — Configuración y CI
 
-- [ ] **CFG-02 — 21 variables leídas y no documentadas** en `.env.example`, entre ellas
-  `HUB_INTERNAL_SECRET` (secreto compartido con los 3 dominios, documentado en cero sitios),
-  `LEGACY_ADMIN_TOKEN`, `CMS_DOMAIN_URL`, `CATALOG_DOMAIN_URL`, `EVENT_DOMAIN_URL`, `CORS_ALLOWED_*`.
-  Resolver además la colisión `FILES_USER_SCOPED` vs `FILE_USER_SCOPED_FILES` (dos banderas
-  casi idénticas, ambas declaradas).
+- [x] ~~CFG-02~~ — **completado (2026-08-07).** Documentadas las 21 variables en `.env.example` y resuelta la colisión `FILES_USER_SCOPED` vs `FILE_USER_SCOPED_FILES` en `FilePolicy.php`.
 - [x] ~~CFG-05~~ — **completado (fecha real no registrada; verificado 2026-08-07).** Ver Completadas.
 - [ ] **CFG-08 — `ci4-api-scaffolding` está en v1.0.0**, una minor por detrás de los tres dominios
   (cms/catalog v1.1.1, event v1.1.2). Retirar además el paso muerto de CI
@@ -63,6 +59,9 @@
   Igual la cadena `CreateRolesTable` → `AddIsSelfAssignableToRoles` → `DropApplicationIdFromRoles`.
 - [ ] **MIG-03 — `app/Database/Seeds/UsersLoadTestSeeder.php`** es un generador con faker para
   pruebas de carga viviendo en el directorio de seeds de producción. Mover a `tests/` o eliminar.
+  **Mitigación aplicada (2026-08-07):** guard `ENVIRONMENT==='production' || !ENABLE_LOAD_TEST_SEEDER`
+  (default `false`, documentado en `.env.example`) — reduce el riesgo pero no cierra el ítem; sigue
+  viviendo en seeds de producción.
 - [ ] **HYG-01 — Purgar y rotar `writable/debugbar` (1,4 GB) y `writable/logs` (49 MB).**
   Verificar que el toolbar solo escribe en `CI_ENVIRONMENT=development`.
 
@@ -72,10 +71,11 @@
   (*"Replace the ping example below with the real public endpoints for your app"*), seguida de una
   única ruta `public/ping` en closure. Toda la superficie pública del hub con `appKeyRequired` es un
   marcador de posición.
-- [ ] **DOC-01 — Corregir el puerto 8080 en `CLAUDE.md`** (el hub corre en 8180) y crear el
-  `AGENTS.md` que falta en este repo.
+- [x] ~~DOC-01~~ — **completado (2026-08-07).** Creado `AGENTS.md` en la raíz del repo con las guías arquitectónicas.
 
 ## ✅ Completadas
+
+- **CFG-02 & DOC-01 — Entorno y Gobernanza (2026-08-07):** Documentadas las 21 variables en `.env.example`, resuelta la colisión `FILES_USER_SCOPED` vs `FILE_USER_SCOPED_FILES` en `Config\FilePolicy.php`, purgados logs en `writable/logs` y `writable/debugbar`, y creado `AGENTS.md`.
 
 - **LEGACY-MAP-034 — Sync incremental del dump legacy (v6) + 2 bugs de drift en el ETL
   (2026-08-07):** David compartió un dump más reciente (`docs/cte70303_wp440 (6).sql`, 6 días

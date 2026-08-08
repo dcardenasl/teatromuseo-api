@@ -10,6 +10,10 @@ class UsersLoadTestSeeder extends Seeder
 {
     public function run(): void
     {
+        if (ENVIRONMENT === 'production' || ! filter_var(env('ENABLE_LOAD_TEST_SEEDER', false), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
         $count = max(1, (int) env('USERS_FAKE_COUNT', 1000));
         $batchSize = max(50, (int) env('USERS_FAKE_BATCH_SIZE', 250));
         $resetBeforeSeed = filter_var(env('USERS_FAKE_RESET', true), FILTER_VALIDATE_BOOLEAN);
