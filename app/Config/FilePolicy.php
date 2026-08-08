@@ -43,7 +43,7 @@ class FilePolicy extends \CodeIgniter\Config\BaseConfig
 
         $this->defaultVisibility = $this->normalizeVisibility((string) env('FILE_DEFAULT_VISIBILITY', $this->defaultVisibility));
         $this->userScopedFiles = filter_var(
-            env('FILE_USER_SCOPED_FILES', $this->userScopedFiles),
+            env('FILE_USER_SCOPED_FILES', env('FILES_USER_SCOPED', $this->userScopedFiles)),
             FILTER_VALIDATE_BOOL,
             FILTER_NULL_ON_FAILURE
         ) ?? $this->userScopedFiles;
