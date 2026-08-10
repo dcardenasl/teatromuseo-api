@@ -88,3 +88,15 @@
 
 La orquestación Docker cross-repo permanece abierta como **API-012** en el tracker activo; no se
 considera cerrada por el hecho de que el entrypoint ya sea idempotente.
+
+---
+
+## ✅ Saneamiento 2026-08-05..07 — cierres reconciliados
+
+Se archivaron las tareas cerradas que seguían visibles en `TASKS.md`: `CFG-02`,
+`CFG-05`, `DOC-01`, `DATA-01`, `LAYER-02`, `LAYER-03` y `LAYER-04`, junto con
+los cierres de migración/higiene verificados en la auditoría cross-repo. Los
+residuos explícitos (`CFG-08`, `CORE-02`, `CORE-06`, `MIG-02/03`, `DEAD-02` y
+`API-012`) permanecen activos.
+
+La evidencia completa está en [`../docs/plan/2026-08-05-saneamiento-arquitectonico.md`](../docs/plan/2026-08-05-saneamiento-arquitectonico.md).
