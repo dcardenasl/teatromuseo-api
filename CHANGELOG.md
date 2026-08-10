@@ -62,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scanner integration fails closed instead of reporting a false pass.
 - **Public file URL resolution** — file responses now derive public URLs from storage paths
   consistently instead of relying on incomplete or environment-specific URL fields.
+- **`InternalFileMetaController::batchMeta`** — sanitizes incoming ids (non-numeric/duplicate
+  values dropped) and rejects batches larger than 200 ids instead of resolving unbounded lists.
 
 - **Legacy migration reconciliation** — later apply runs now repair missing work/event covers and
   event gallery references instead of leaving partially migrated media behind.
