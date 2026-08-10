@@ -6,6 +6,7 @@ namespace App\Controllers\Api\V1\Internal;
 
 use CodeIgniter\HTTP\ResponseInterface;
 use Config\Services;
+use dcardenasl\Ci4ApiCore\Exceptions\BadRequestException;
 use dcardenasl\Ci4ApiCore\Http\ApiController;
 
 /**
@@ -35,6 +36,16 @@ class InternalFileMetaController extends ApiController
         return $this->handleRequest(function (): mixed {
             $raw = $this->request->getVar('ids');
             $ids = is_array($raw) ? $raw : (is_string($raw) ? explode(',', $raw) : []);
+            $ids = array_values(array_unique(array_map(
+                static fn (mixed $id): int => (int) $id,
+                array_filter($ids, static fn (mixed $id): bool => is_numeric($id) && (int) $id > 0),
+            )));
+
+            if (count($ids) > 200) {
+                throw new BadRequestException(lang('Files.max_batch_ids'), [
+                    'ids' => [lang('Files.max_batch_ids_hint')],
+                ]);
+            }
 
             $result = Services::fileService()->resolvePublicMetaBatch($ids);
             if (empty($result)) {

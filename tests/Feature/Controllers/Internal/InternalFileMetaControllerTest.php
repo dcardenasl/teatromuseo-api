@@ -51,6 +51,20 @@ final class InternalFileMetaControllerTest extends ApiTestCase
         $this->assertSame([], $json['data']);
     }
 
+    public function testBatchMetaRejectsMoreThanTwoHundredIdsBeforeResolvingFiles(): void
+    {
+        $rawKey = $this->seedAppAndKey('file-meta-limit');
+        $query = implode('&', array_map(
+            static fn (int $id): string => 'ids[]=' . $id,
+            range(1, 201),
+        ));
+
+        $result = $this->withHeaders(['X-App-Key' => $rawKey])
+            ->get('/api/v1/internal/files/batch-meta?' . $query);
+
+        $result->assertStatus(400);
+    }
+
     public function testBatchMetaWithUnknownIdsReturnsEmptyObject(): void
     {
         $rawKey = $this->seedAppAndKey('file-meta-unknown');

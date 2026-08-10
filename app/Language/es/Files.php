@@ -42,6 +42,8 @@ return [
     'already_trashed'  => 'El archivo ya está en la papelera',
     'not_trashed'      => 'El archivo no está en la papelera',
     'bulk_ids_required' => 'Se requiere una lista no vacía de IDs de archivos',
+    'max_batch_ids' => 'Se puede resolver un máximo de 200 IDs de archivos por lote.',
+    'max_batch_ids_hint' => 'Reduce el lote a 200 IDs o menos.',
     'bulk_item_failed' => 'La operación falló para este archivo',
 
     // Referencias de archivos
