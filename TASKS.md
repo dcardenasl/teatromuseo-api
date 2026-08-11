@@ -4,9 +4,13 @@
 > [`../TASKS.md`](../TASKS.md). Cierres históricos:
 > [`TASKS_ARCHIVE.md`](TASKS_ARCHIVE.md).
 
-## 🔴 En progreso
+## ✅ Completadas
 
-*(sin tarea del plan PublicRead asignada al Hub en este momento)*
+- [x] **ADM-DASH-01 — Resumen agregado del dashboard administrativo** — cerrada
+  2026-08-11. Lectura autenticada y permission-aware para datos propiedad del
+  Hub, con contrato, permisos y pruebas de regresión.
+
+## 🔴 En progreso
 
 ## 🟡 Próximo
 

@@ -98,7 +98,19 @@ trait AuthIdentityServices
             static::approveUserAction($userRepository),
             static::createUserAction($userRepository),
             static::updateUserAction($userRepository),
-            static::iamAuthorizationService()
+            static::iamAuthorizationService(),
+            static::adminUserListRepository()
+        );
+    }
+
+    public static function adminUserListRepository(bool $getShared = true): \App\Interfaces\Users\AdminUserListRepositoryInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('adminUserListRepository');
+        }
+
+        return new \App\Repositories\Users\AdminUserListRepository(
+            \Config\Database::connect(),
         );
     }
 
