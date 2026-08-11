@@ -47,3 +47,12 @@ Options -Indexes
 # Disable server signature start
 ServerSignature Off
 # Disable server signature end
+
+# Uploaded variants and public static assets use content-addressed filenames.
+# Keep them in browser/CDN caches; API responses themselves remain governed by
+# the application security headers and are not covered by this rule.
+<IfModule mod_headers.c>
+	<FilesMatch "\.(?:avif|webp|png|jpe?g|gif|svg|ico|woff2?)$">
+		Header set Cache-Control "public, max-age=31536000, immutable"
+	</FilesMatch>
+</IfModule>
