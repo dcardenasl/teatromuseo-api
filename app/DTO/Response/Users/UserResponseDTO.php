@@ -69,7 +69,7 @@ readonly class UserResponseDTO implements DataTransferObjectInterface
             $updated_at = $updated_at->format('Y-m-d H:i:s');
         }
 
-        $roles = self::resolveRoles((int) ($data['id'] ?? 0));
+        $roles = is_array($data['roles'] ?? null) ? array_values($data['roles']) : self::resolveRoles((int) ($data['id'] ?? 0));
 
         return new self(
             id: (int) ($data['id'] ?? 0),

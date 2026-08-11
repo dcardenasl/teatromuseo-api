@@ -34,6 +34,8 @@ readonly class UserIndexRequestDTO extends BaseRequestDTO
     #[OA\Property(description: 'Sort field and direction', default: '', example: 'created_at or -created_at', nullable: true)]
     public string $sort;
 
+    public string $projection;
+
     public function rules(): array
     {
         return [
@@ -42,6 +44,7 @@ readonly class UserIndexRequestDTO extends BaseRequestDTO
             'search'   => 'permit_empty|string|max_length[100]',
             'status'   => 'permit_empty|in_list[active,inactive,pending_approval,invited]',
             'sort'     => 'permit_empty|max_length[100]',
+            'projection' => 'permit_empty|in_list[full,list]',
         ];
     }
 
@@ -62,6 +65,7 @@ readonly class UserIndexRequestDTO extends BaseRequestDTO
         $this->status = $this->extractString($data, $filter, 'status');
 
         $this->sort = (string) ($data['sort'] ?? '');
+        $this->projection = (string) ($data['projection'] ?? 'full');
     }
 
     public function toArray(): array
@@ -71,6 +75,7 @@ readonly class UserIndexRequestDTO extends BaseRequestDTO
             'per_page'  => $this->per_page,
             'search'   => $this->search,
             'sort'     => $this->sort,
+            'projection' => $this->projection,
         ];
 
         if ($this->status) {
@@ -87,6 +92,9 @@ readonly class UserIndexRequestDTO extends BaseRequestDTO
     private function extractString(array $data, array $filter, string $key): ?string
     {
         $value = $data[$key] ?? $filter[$key] ?? null;
+        if (is_array($value) && array_key_exists('eq', $value)) {
+            $value = $value['eq'];
+        }
         if (! is_scalar($value)) {
             return null;
         }

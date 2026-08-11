@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Services\Users;
 
 use App\Entities\UserEntity;
+use App\Interfaces\Users\AdminUserListRepositoryInterface;
 use App\Interfaces\Users\UserRepositoryInterface;
 use App\Interfaces\Users\UserServiceInterface;
 use App\Services\Iam\IamAuthorizationService;
 use App\Services\Users\Actions\ApproveUserAction;
 use App\Services\Users\Actions\CreateUserAction;
 use App\Services\Users\Actions\UpdateUserAction;
+use dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
+use dcardenasl\Ci4ApiCore\Dto\PaginatedResponseDTO;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
 use dcardenasl\Ci4ApiCore\Http\ContextHolder;
@@ -34,9 +37,23 @@ class UserService extends BaseCrudService implements UserServiceInterface
         protected ApproveUserAction $approveUserAction,
         protected CreateUserAction $createUserAction,
         protected UpdateUserAction $updateUserAction,
-        protected IamAuthorizationService $authz
+        protected IamAuthorizationService $authz,
+        private readonly ?AdminUserListRepositoryInterface $adminListRepository = null
     ) {
         parent::__construct($userRepository, $responseMapper);
+    }
+
+    public function index(DataTransferObjectInterface $request, ?SecurityContext $context = null): DataTransferObjectInterface
+    {
+        $requestData = $request->toArray();
+        if (($requestData['projection'] ?? 'full') !== 'list' || $this->adminListRepository === null) {
+            return parent::index($request, $context);
+        }
+        $requestData['exclude_superadmins'] = ! $this->authz->isSuperAdmin($context ?? ContextHolder::get());
+        $result = $this->adminListRepository->paginateAdminList($requestData, (int) ($requestData['page'] ?? 1), (int) ($requestData['per_page'] ?? 20));
+        $data = array_map(fn (array $row): DataTransferObjectInterface => $this->responseMapper->map($row), $result['data']);
+
+        return PaginatedResponseDTO::fromArray(['data' => $data, 'total' => $result['total'], 'page' => $result['page'], 'per_page' => $result['per_page']]);
     }
 
     /**
