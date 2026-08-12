@@ -17,6 +17,7 @@ use App\Interfaces\Files\FileServiceInterface;
 use App\Libraries\Files\FilePickerManifestCache;
 use App\Libraries\Files\ImageVariantProcessor;
 use App\Libraries\Storage\StorageManager;
+use App\Support\Files\FileAction;
 use dcardenasl\Ci4ApiCore\Dto\PaginatedResponseDTO;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Exceptions\AuthorizationException;
@@ -72,7 +73,11 @@ class FileService implements FileServiceInterface
     public function upload(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface
     {
         /** @var \App\DTO\Request\Files\FileUploadRequestDTO $request */
-        $userId = $this->resolveUserId($request, $context);
+        if (! $this->filePolicy->canUpload($context)) {
+            throw new AuthorizationException(lang('Files.unauthorized'));
+        }
+
+        $userId = $this->resolveUserId($context);
         $visibility = $this->filePolicy->resolveUploadVisibility($request, $context);
 
         $result = $this->binaryIngestion->create($request, $userId, $visibility);
@@ -87,7 +92,11 @@ class FileService implements FileServiceInterface
     public function index(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface
     {
         /** @var \App\DTO\Request\Files\FileIndexRequestDTO $request */
-        $userId = $this->resolveUserId($request, $context);
+        if (! $this->filePolicy->canRead($context)) {
+            throw new AuthorizationException(lang('Files.unauthorized'));
+        }
+
+        $userId = $this->resolveUserId($context);
 
         $trashedMode = $request->trashed;
         // `BaseRepository::paginateCriteria` wraps the same Model instance that
@@ -96,8 +105,8 @@ class FileService implements FileServiceInterface
         $fileModel = $this->fileRepository instanceof \dcardenasl\Ci4ApiCore\Repositories\BaseRepository
             ? $this->fileRepository->getModel()
             : null;
-        $baseCriteria = function (\dcardenasl\Ci4ApiCore\Filters\QueryBuilder $builder) use ($userId, $trashedMode, $fileModel): void {
-            if ($this->filePolicy->shouldScopeListingsToOwner()) {
+        $baseCriteria = function (\dcardenasl\Ci4ApiCore\Filters\QueryBuilder $builder) use ($userId, $trashedMode, $fileModel, $context): void {
+            if ($this->filePolicy->shouldScopeListingsToOwner($context)) {
                 $builder->where('user_id', $userId);
             }
             if ($fileModel === null) {
@@ -127,7 +136,7 @@ class FileService implements FileServiceInterface
 
     public function pickerManifest(?SecurityContext $context = null): FilePickerManifestResponseDTO
     {
-        if ($context?->user_id === null) {
+        if ($context?->user_id === null || ! $this->filePolicy->canRead($context)) {
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
@@ -218,7 +227,7 @@ class FileService implements FileServiceInterface
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
-        $file = $this->findFileAndAuthorize($id, $context->user_id, 'view', $context->hasPermission('files.read'), $context);
+        $file = $this->findFileAndAuthorize($id, $context->user_id, FileAction::VIEW, $context);
 
         /** @var FileResponseDTO $response */
         $response = $this->responseMapper->map($file);
@@ -231,8 +240,8 @@ class FileService implements FileServiceInterface
     public function download(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface
     {
         /** @var \App\DTO\Request\Files\FileGetRequestDTO $request */
-        $userId = $this->resolveUserId($request, $context);
-        $file = $this->findFileAndAuthorize($request->id, $userId, 'download', false, $context);
+        $userId = $this->resolveUserId($context);
+        $file = $this->findFileAndAuthorize($request->id, $userId, FileAction::DOWNLOAD, $context);
 
         $data = $file->toArray();
         $data['url'] = $this->storage->url((string) $file->path);
@@ -251,7 +260,7 @@ class FileService implements FileServiceInterface
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
-        $file = $this->findFileAndAuthorize($id, $context->user_id, 'delete', $context->hasPermission('files.read'), $context);
+        $file = $this->findFileAndAuthorize($id, $context->user_id, FileAction::DELETE, $context);
 
         if ($file->isTrashed()) {
             throw new BadRequestException(lang('Files.already_trashed'));
@@ -281,7 +290,7 @@ class FileService implements FileServiceInterface
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
-        $file = $this->findTrashedFileAndAuthorize($id, $context->user_id, 'restore', $context->hasPermission('files.read'), $context);
+        $file = $this->findTrashedFileAndAuthorize($id, $context->user_id, FileAction::RESTORE, $context);
         if (!$file->isTrashed()) {
             throw new BadRequestException(lang('Files.not_trashed'));
         }
@@ -303,7 +312,7 @@ class FileService implements FileServiceInterface
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
-        $file = $this->findTrashedFileAndAuthorize($id, $context->user_id, 'force-delete', $context->hasPermission('files.read'), $context);
+        $file = $this->findTrashedFileAndAuthorize($id, $context->user_id, FileAction::FORCE_DELETE, $context);
         if (!$file->isTrashed()) {
             throw new BadRequestException(lang('Files.not_trashed'));
         }
@@ -337,8 +346,7 @@ class FileService implements FileServiceInterface
         $file = $this->findFileAndAuthorize(
             $id,
             $context->user_id,
-            'view',
-            $context->hasPermission('files.read'),
+            FileAction::VIEW_USAGES,
             $context
         );
 
@@ -360,8 +368,7 @@ class FileService implements FileServiceInterface
         $file = $this->findFileAndAuthorize(
             $id,
             $context->user_id,
-            'view',
-            $context->hasPermission('files.read'),
+            FileAction::REGENERATE_VARIANTS,
             $context
         );
 
@@ -399,7 +406,7 @@ class FileService implements FileServiceInterface
         }
 
         /** @var \App\DTO\Request\Files\FileUploadRequestDTO $request */
-        $file = $this->findFileAndAuthorize($id, $context->user_id, 'replace', $context->hasPermission('files.read'), $context);
+        $file = $this->findFileAndAuthorize($id, $context->user_id, FileAction::REPLACE, $context);
 
         if ($file->isTrashed()) {
             throw new BadRequestException(lang('Files.already_trashed'));
@@ -422,7 +429,7 @@ class FileService implements FileServiceInterface
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
 
-        $file = $this->findFileAndAuthorize($id, $context->user_id, 'view', $context->hasPermission('files.read'), $context);
+        $file = $this->findFileAndAuthorize($id, $context->user_id, FileAction::UPDATE_METADATA, $context);
 
         $this->fileRepository->update((int) $file->id, $dto->toArray());
 
@@ -493,30 +500,23 @@ class FileService implements FileServiceInterface
         return $results;
     }
 
-    /**
-     * @param \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface|array<string, mixed> $request
-     */
-    protected function resolveUserId(object|array $request, ?SecurityContext $context): int
+    protected function resolveUserId(?SecurityContext $context): int
     {
-        $data = $request instanceof \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface ? $request->toArray() : (array)$request;
-        $context ??= SecurityContext::anonymous();
-        $userId = $context->user_id ?? (int) ($data['user_id'] ?? 0);
-
-        if ($userId === 0) {
+        if ($context === null || $context->user_id === null) {
             throw new AuthorizationException(lang('Api.unauthorized'));
         }
-        return $userId;
+
+        return (int) $context->user_id;
     }
 
 
     protected function findFileAndAuthorize(
         int $id,
         int $userId,
-        string $action,
-        bool $bypassOwnership = false,
+        FileAction $action,
         ?SecurityContext $context = null
     ): \App\Entities\FileEntity {
-        return $this->locateAndAuthorize($id, $userId, $action, $bypassOwnership, $context, false);
+        return $this->locateAndAuthorize($id, $userId, $action, $context, false);
     }
 
     /**
@@ -526,18 +526,16 @@ class FileService implements FileServiceInterface
     protected function findTrashedFileAndAuthorize(
         int $id,
         int $userId,
-        string $action,
-        bool $bypassOwnership = false,
+        FileAction $action,
         ?SecurityContext $context = null
     ): \App\Entities\FileEntity {
-        return $this->locateAndAuthorize($id, $userId, $action, $bypassOwnership, $context, true);
+        return $this->locateAndAuthorize($id, $userId, $action, $context, true);
     }
 
     protected function locateAndAuthorize(
         int $id,
         int $userId,
-        string $action,
-        bool $bypassOwnership,
+        FileAction $action,
         ?SecurityContext $context,
         bool $includeTrashed
     ): \App\Entities\FileEntity {
@@ -549,17 +547,8 @@ class FileService implements FileServiceInterface
             throw new NotFoundException(lang('Files.file_not_found'));
         }
 
-        $effectiveBypass = $bypassOwnership
-            || (in_array($action, ['download', 'view'], true) && $this->filePolicy->canBypassOwnershipForRead($context));
-
-        if (!$effectiveBypass && ! $this->filePolicy->canAccessFile($file, $userId, $action, $context)) {
-            $deniedAction = match ($action) {
-                'download'     => 'unauthorized_file_download',
-                'delete'       => 'unauthorized_file_delete',
-                'restore'      => 'unauthorized_file_restore',
-                'force-delete' => 'unauthorized_file_force_delete',
-                default        => 'unauthorized_file_access',
-            };
+        if (! $this->filePolicy->canAccessFile($file, $userId, $action, $context)) {
+            $deniedAction = 'unauthorized_file_' . $action->auditSuffix();
             $this->auditService->log(
                 $deniedAction,
                 'files',
