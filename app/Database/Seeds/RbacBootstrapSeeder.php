@@ -25,7 +25,8 @@ class RbacBootstrapSeeder extends Seeder
         ['code' => 'users.read',             'resource' => 'users',    'action' => 'read',              'description' => 'Read user records'],
         ['code' => 'users.write',            'resource' => 'users',    'action' => 'write',             'description' => 'Create, update or delete users'],
         ['code' => 'files.read',             'resource' => 'files',    'action' => 'read',              'description' => 'Read files'],
-        ['code' => 'files.write',            'resource' => 'files',    'action' => 'write',             'description' => 'Upload or delete files'],
+        ['code' => 'files.write',            'resource' => 'files',    'action' => 'write',             'description' => 'Upload or modify owned files'],
+        ['code' => 'files.admin',            'resource' => 'files',    'action' => 'admin',             'description' => 'Manage files owned by any user'],
         ['code' => 'audit.read',             'resource' => 'audit',    'action' => 'read',              'description' => 'Read audit log entries'],
         ['code' => 'metrics.read',           'resource' => 'metrics',  'action' => 'read',              'description' => 'Read metrics dashboards'],
         ['code' => 'system.public-cache.read', 'resource' => 'public-cache', 'action' => 'read', 'description' => 'View public-site cache status'],
@@ -51,7 +52,7 @@ class RbacBootstrapSeeder extends Seeder
             'permissions'        => [
                 'self.access',
                 'users.read', 'users.write',
-                'files.read', 'files.write',
+                'files.read', 'files.write', 'files.admin',
                 'audit.read',
                 'metrics.read',
                 'system.public-cache.read', 'system.public-cache.invalidate',
