@@ -6,6 +6,11 @@
 
 ## ✅ Completadas
 
+- [x] **SEC-01 — Control de acceso en gestión de archivos** — cerrada
+  2026-08-12. Se eliminó el bypass de ownership por booleano, se centralizó la
+  política por acción, se añadió `files.admin`, filtros de ruta, migración
+  idempotente y regresiones cross-owner; `composer quality` quedó verde.
+
 - [x] **ADM-DASH-01 — Resumen agregado del dashboard administrativo** — cerrada
   2026-08-11. Lectura autenticada y permission-aware para datos propiedad del
   Hub, con contrato, permisos y pruebas de regresión.
