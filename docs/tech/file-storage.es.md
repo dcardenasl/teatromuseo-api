@@ -23,3 +23,23 @@ Variables de Entorno:
 
 Validación:
 Todas las operaciones de archivos utilizan validación basada en DTOs. Los procesadores garantizan que los archivos sean estructuralmente sólidos y seguros antes de que el `FileService` intente la persistencia.
+
+## Autorización
+
+La autorización es explícita por acción y está centralizada en
+`FilePolicyService`; ya no existe un flag de bypass de propiedad enviado por el
+caller.
+
+- `files.read` permite leer (`view`, `download` y `view_usages`). Cuando
+  `FILE_ALLOW_PRIVILEGED_READ_BYPASS=true`, puede omitir la propiedad solamente
+  para esas acciones de lectura.
+- `files.write` permite subir y modificar archivos propios.
+- `files.admin` permite modificar archivos de cualquier usuario.
+- `force-delete` usa la misma regla de propietario/escritura o administración
+  para archivos ajenos, y la ruta exige además `files.write` como gate grueso.
+
+`delete`, `restore`, `replace`, `update_metadata` y `regenerate_variants` nunca
+interpretan `files.read` como permiso de escritura ni como bypass de propiedad.
+Los intentos denegados quedan en el audit log con códigos específicos como
+`unauthorized_file_delete`, `unauthorized_file_replace` y
+`unauthorized_file_update_metadata`.
