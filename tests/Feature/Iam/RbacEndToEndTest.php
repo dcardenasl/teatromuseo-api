@@ -74,6 +74,23 @@ final class RbacEndToEndTest extends ApiTestCase
         $this->assertRoleHasPermission($superadminRoleId, $permissionId);
     }
 
+    public function testRbacSeederKeepsFileAdminPermissionOutOfSelfAssignableUserRole(): void
+    {
+        $db = \Config\Database::connect();
+        $app = $db->table('applications')->where('code', 'self')->get()?->getRowArray();
+        $this->assertNotNull($app);
+
+        $filesAdminId = $this->permissionId((int) $app['id'], 'files.admin');
+        $this->assertGreaterThan(0, $filesAdminId);
+        $this->assertRoleHasPermission($this->roleId('admin'), $filesAdminId);
+
+        $userHasAdmin = $db->table('role_permissions')
+            ->where('role_id', $this->roleId('user'))
+            ->where('permission_id', $filesAdminId)
+            ->countAllResults();
+        $this->assertSame(0, $userHasAdmin);
+    }
+
     public function testPermissionIndexAcceptsPerPageUpToFiveHundred(): void
     {
         $dto = new PermissionIndexRequestDTO(['per_page' => 500], Services::validation());

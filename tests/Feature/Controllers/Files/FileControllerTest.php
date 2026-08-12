@@ -162,6 +162,62 @@ class FileControllerTest extends ApiTestCase
         $result->assertStatus(200);
     }
 
+    public function testUserCannotDeleteAnotherUsersFileEvenWithReadAndWritePermissions(): void
+    {
+        $otherUserId = $this->createUser('foreign-file-' . uniqid() . '@example.com', 'ValidPass123!', 'user');
+        $fileId = $this->createFile($otherUserId);
+
+        $result = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->delete("/api/v1/files/{$fileId}");
+
+        $result->assertStatus(403);
+        $this->assertNotNull($this->fileModel->find($fileId), 'Foreign file must remain live after denial.');
+    }
+
+    public function testUserCannotUpdateAnotherUsersMetadata(): void
+    {
+        $otherUserId = $this->createUser('foreign-metadata-' . uniqid() . '@example.com', 'ValidPass123!', 'user');
+        $fileId = $this->createFile($otherUserId);
+
+        $result = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->patch("/api/v1/files/{$fileId}", ['alt_text' => 'must remain unchanged']);
+
+        $result->assertStatus(403);
+        $file = $this->fileModel->find($fileId);
+        $this->assertNotNull($file);
+        $this->assertNotSame('must remain unchanged', $file->alt_text ?? null);
+    }
+
+    public function testUserCannotRestoreOrForceDeleteAnotherUsersFile(): void
+    {
+        $otherUserId = $this->createUser('foreign-trash-' . uniqid() . '@example.com', 'ValidPass123!', 'user');
+        $fileId = $this->createFile($otherUserId);
+        $this->fileModel->delete($fileId);
+
+        $restore = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->post("/api/v1/files/{$fileId}/restore");
+        $restore->assertStatus(403);
+
+        $forceDelete = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->delete("/api/v1/files/{$fileId}/force");
+        $forceDelete->assertStatus(403);
+
+        $this->assertNotNull($this->fileModel->withDeleted()->find($fileId), 'Foreign trashed file must remain recoverable.');
+    }
+
+    public function testAdminCanDeleteAnotherUsersFile(): void
+    {
+        $otherUserId = $this->createUser('admin-foreign-file-' . uniqid() . '@example.com', 'ValidPass123!', 'user');
+        $fileId = $this->createFile($otherUserId);
+        $admin = $this->actAs('admin');
+
+        $result = $this->withHeaders(['Authorization' => "Bearer {$admin['token']}"])
+            ->delete("/api/v1/files/{$fileId}");
+
+        $result->assertStatus(200);
+        $this->assertNull($this->fileModel->find($fileId), 'Admin should be able to trash a foreign file.');
+    }
+
     public function testDeleteSoftDeletesAndPreservesRow(): void
     {
         \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));
