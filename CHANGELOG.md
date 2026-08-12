@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **File access control** — `FileService` no longer accepts a caller-supplied ownership-bypass
+  flag; authorization is now action-based and centralized in `FilePolicyService`. Mutating
+  actions (`delete`, `restore`, `force_delete`, `replace`, `update_metadata`,
+  `regenerate_variants`) require the caller to own the file or hold the new `files.admin`
+  permission — `files.read` alone can no longer be used to mutate another user's file. File
+  routes are also now gated by `files.read`/`files.write` at the route level.
 - **`VirusScannerServiceInterface` wiring** — replaced `ClamAvScannerService`, which reported a
   simulated successful scan without ever contacting a scanner, with `NullVirusScannerService`:
   scanning disabled logs that the file was not scanned, and scanning enabled without a real
