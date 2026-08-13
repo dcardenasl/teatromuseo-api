@@ -38,7 +38,7 @@ readonly class JwtService implements \App\Interfaces\Tokens\JwtServiceInterface
      *
      * @param list<string> $permissions Effective permission codes; encoded as the `scope` claim.
      */
-    public function encode(int $userId, $permissions = []): string
+    public function encode(int $userId, $permissions = [], int $tokenVersion = 0): string
     {
         $issuedAt = time();
         $expirationTime = $issuedAt + $this->expirationTime;
@@ -54,6 +54,7 @@ readonly class JwtService implements \App\Interfaces\Tokens\JwtServiceInterface
             'jti'   => $jti,
             'uid'   => $userId,
             'scope' => array_values($permissions),
+            'token_version' => max(0, $tokenVersion),
         ];
 
         return JWT::encode($payload, $this->secretKey, $this->algorithm);

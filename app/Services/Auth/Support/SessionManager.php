@@ -42,8 +42,9 @@ class SessionManager
         $permissions = $userId > 0
             ? $this->permissionsResolver->resolveAll($userId)
             : [];
+        $tokenVersion = max(0, (int) ($user->auth_token_version ?? 0));
 
-        $accessToken = $this->jwtService->encode($userId, $permissions);
+        $accessToken = $this->jwtService->encode($userId, $permissions, $tokenVersion);
         $refreshToken = $this->refreshTokenService->issueRefreshToken($userId);
 
         $userPayload = MeResponseDTO::fromUserData(

@@ -15,8 +15,9 @@ interface JwtServiceInterface
      * Generate a JWT token with JTI (unique identifier)
      *
      * @param list<string> $permissions Effective permission codes; encoded as the `scope` claim.
+     * @param int $tokenVersion Per-user session version used for immediate invalidation.
      */
-    public function encode(int $userId, $permissions = []): string;
+    public function encode(int $userId, $permissions = [], int $tokenVersion = 0): string;
 
     /**
      * Generate a service (machine-to-machine) JWT.

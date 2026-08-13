@@ -83,8 +83,9 @@ class IamSmokeTest extends BaseCommand
 
         $userId      = (int) $row['user_id'];
         $permissions = Services::effectivePermissionsResolver()->resolveAll($userId);
+        $tokenVersion = Services::tokenVersionService()->current($userId);
 
-        return Services::jwtService()->encode($userId, $permissions);
+        return Services::jwtService()->encode($userId, $permissions, $tokenVersion);
     }
 
     /** @return array{int, string|false} */
