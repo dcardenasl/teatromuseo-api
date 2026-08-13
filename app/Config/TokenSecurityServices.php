@@ -47,6 +47,8 @@ trait TokenSecurityServices
             static::userModel(),
             static::userAccountGuard(),
             static::effectivePermissionsResolver(),
+            static::auditService(),
+            static::tokenVersionService(),
             $refreshTokenTtl,
             $accessTokenTtl
         );
