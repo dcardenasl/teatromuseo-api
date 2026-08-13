@@ -9,6 +9,7 @@ use App\DTO\Response\Auth\IntrospectResponseDTO;
 use App\Interfaces\Auth\TokenIntrospectionServiceInterface;
 use App\Interfaces\Tokens\JwtServiceInterface;
 use App\Interfaces\Tokens\TokenRevocationServiceInterface;
+use App\Models\UserModel;
 use App\Services\Iam\EffectivePermissionsResolver;
 
 /**
@@ -29,6 +30,7 @@ class TokenIntrospectionService implements TokenIntrospectionServiceInterface
         private readonly JwtServiceInterface $jwtService,
         private readonly TokenRevocationServiceInterface $tokenRevocationService,
         private readonly EffectivePermissionsResolver $effectivePermissionsResolver,
+        private readonly UserModel $userModel,
     ) {
     }
 
@@ -46,6 +48,21 @@ class TokenIntrospectionService implements TokenIntrospectionServiceInterface
         }
 
         $uid = isset($decoded->uid) ? (int) $decoded->uid : null;
+
+        if ($uid !== null && $uid > 0) {
+            $user = $this->userModel->find($uid);
+            if ($user === null) {
+                return $this->invalid('invalid_or_expired');
+            }
+
+            $tokenVersion = isset($decoded->token_version)
+                ? (int) $decoded->token_version
+                : 0;
+            $currentVersion = max(0, (int) ($user->auth_token_version ?? 0));
+            if ($tokenVersion !== $currentVersion) {
+                return $this->invalid('revoked');
+            }
+        }
 
         $permissions = $this->resolvePermissions($decoded, $uid, $applicationId);
 

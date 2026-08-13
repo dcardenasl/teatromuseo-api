@@ -19,6 +19,8 @@ use dcardenasl\Ci4ApiCore\Http\Filters\AbstractJwtAuthFilter;
  */
 class JwtAuthFilter extends AbstractJwtAuthFilter
 {
+    private ?object $decodedToken = null;
+
     protected function decodeToken(string $token): ?object
     {
         $bearer  = Services::bearerTokenService();
@@ -29,7 +31,9 @@ class JwtAuthFilter extends AbstractJwtAuthFilter
         // check inside `extractBearerToken()`. Decoding is direct.
         $decoded = $service->decode($token);
 
-        return is_object($decoded) ? $decoded : null;
+        $this->decodedToken = is_object($decoded) ? $decoded : null;
+
+        return $this->decodedToken;
     }
 
     protected function extractBearerToken(string $authHeader): ?string
@@ -52,7 +56,25 @@ class JwtAuthFilter extends AbstractJwtAuthFilter
         $userModel = Services::userModel(false);
         $user      = $userModel->find($userId);
 
-        return is_object($user) ? $user : null;
+        if (! is_object($user)) {
+            return null;
+        }
+
+        // AbstractJwtAuthFilter calls loadActor before its optional access
+        // policy bypass, so this check also protects routes such as resend-
+        // verification that intentionally skip account-policy enforcement.
+        $tokenVersion = isset($this->decodedToken->token_version)
+            ? (int) $this->decodedToken->token_version
+            : 0;
+        $currentVersion = max(0, (int) ($user->auth_token_version ?? 0));
+        if ($tokenVersion !== $currentVersion) {
+            // Returning null lets AbstractJwtAuthFilter produce the canonical
+            // 401 response through requireActorOnUserToken(). Throwing here
+            // would bypass the filter's authentication response path.
+            return null;
+        }
+
+        return $user;
     }
 
     protected function requireActorOnUserToken(): bool
