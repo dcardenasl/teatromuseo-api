@@ -70,6 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consistently instead of relying on incomplete or environment-specific URL fields.
 - **`InternalFileMetaController::batchMeta`** — sanitizes incoming ids (non-numeric/duplicate
   values dropped) and rejects batches larger than 200 ids instead of resolving unbounded lists.
+- **Token lifecycle hardening** — refresh tokens now rotate within a family and a replayed
+  (already-rotated) token revokes every session for that user and bumps a per-user
+  `auth_token_version`, which JWTs must match to stay valid — giving `revoke-all` and reuse
+  detection immediate, account-wide effect instead of waiting out the access-token TTL.
+  Revocation lookups no longer cache negative results, so a check made just before a revocation
+  commits can no longer return a stale "not revoked".
 
 - **Legacy migration reconciliation** — later apply runs now repair missing work/event covers and
   event gallery references instead of leaving partially migrated media behind.
