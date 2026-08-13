@@ -87,5 +87,5 @@ Si el Paso 4 revela que el nuevo secret está mal (typo, encoding):
 - [ ] Identificar cómo se filtró el secret (logs / screenshot / chat / repo).
 - [ ] Si fue repo-leaked: reescribir historia git (`git filter-repo`) o rotar de nuevo asumiendo que el valor filtrado está en el clone de alguien.
 - [ ] Auditar `audit_logs` por eventos `auth.login` anómalos en la ventana del leak.
-- [ ] Considerar si refresh tokens emitidos durante la ventana del leak deben revocarse (tabla `token_revocations`).
+- [ ] Considerar si los refresh tokens emitidos durante la ventana del leak deben revocarse (tabla `refresh_tokens`) y si los JTI de access tokens individuales deben agregarse a `token_blacklist`.
 - [ ] Actualizar `.env.example` placeholder si el leak reveló un default engañoso.
