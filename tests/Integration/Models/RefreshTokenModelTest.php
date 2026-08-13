@@ -35,6 +35,7 @@ class RefreshTokenModelTest extends IntegrationTestCase
         $data = [
             'user_id' => $this->testUserId,
             'token' => bin2hex(random_bytes(32)),
+            'family_id' => bin2hex(random_bytes(16)),
             'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
         ];
 
@@ -50,6 +51,7 @@ class RefreshTokenModelTest extends IntegrationTestCase
         $this->model->insert([
             'user_id' => $this->testUserId,
             'token' => $token,
+            'family_id' => bin2hex(random_bytes(16)),
             'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
         ]);
 
@@ -65,12 +67,14 @@ class RefreshTokenModelTest extends IntegrationTestCase
         $this->model->insert([
             'user_id' => $this->testUserId,
             'token' => 'token1',
+            'family_id' => bin2hex(random_bytes(16)),
             'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
         ]);
 
         $this->model->insert([
             'user_id' => $this->testUserId,
             'token' => 'token2',
+            'family_id' => bin2hex(random_bytes(16)),
             'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
         ]);
 

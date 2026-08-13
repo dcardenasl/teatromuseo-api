@@ -86,6 +86,55 @@ class TokenControllerTest extends ApiTestCase
 
         $json = json_decode($result->getJSON(), true);
         $this->assertEquals('success', $json['status']);
+
+        // The JWT was issued before the account-wide version bump and must
+        // fail immediately, without waiting for its exp claim.
+        \dcardenasl\Ci4ApiCore\Http\ContextHolder::flush();
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->get('/api/v1/auth/me')
+            ->assertStatus(401);
+    }
+
+    public function testReusingRotatedRefreshTokenRevokesTheAccount(): void
+    {
+        $email = 'refresh-reuse-test@example.com';
+        $password = 'ValidPass123!';
+        $this->createUser($email, $password);
+
+        $login = $this->withBodyFormat('json')->post('/api/v1/auth/login', [
+            'email' => $email,
+            'password' => $password,
+        ]);
+        $login->assertStatus(200);
+        $loginPayload = json_decode($login->getJSON(), true);
+        $oldAccessToken = $loginPayload['access_token'] ?? $loginPayload['data']['access_token'] ?? '';
+        $oldRefreshToken = $loginPayload['refresh_token'] ?? $loginPayload['data']['refresh_token'] ?? '';
+
+        $firstRefresh = $this->withBodyFormat('json')->post('/api/v1/auth/refresh', [
+            'refresh_token' => $oldRefreshToken,
+        ]);
+        $firstRefresh->assertStatus(200);
+        $firstRefreshPayload = json_decode($firstRefresh->getJSON(), true);
+        $rotatedAccessToken = $firstRefreshPayload['access_token'] ?? $firstRefreshPayload['data']['access_token'] ?? '';
+        $rotatedRefreshToken = $firstRefreshPayload['refresh_token'] ?? $firstRefreshPayload['data']['refresh_token'] ?? '';
+
+        $reuse = $this->withBodyFormat('json')->post('/api/v1/auth/refresh', [
+            'refresh_token' => $oldRefreshToken,
+        ]);
+        $reuse->assertStatus(401);
+
+        $revokedSession = $this->withBodyFormat('json')->post('/api/v1/auth/refresh', [
+            'refresh_token' => $rotatedRefreshToken,
+        ]);
+        $revokedSession->assertStatus(401);
+
+        \dcardenasl\Ci4ApiCore\Http\ContextHolder::flush();
+        $this->withHeaders(['Authorization' => "Bearer {$oldAccessToken}"])
+            ->get('/api/v1/auth/me')
+            ->assertStatus(401);
+        $this->withHeaders(['Authorization' => "Bearer {$rotatedAccessToken}"])
+            ->get('/api/v1/auth/me')
+            ->assertStatus(401);
     }
 
     public function testRevokeAllWithoutTokenReturns401(): void
