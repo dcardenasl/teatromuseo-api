@@ -90,4 +90,18 @@ class UserModel extends BaseAuditableModel
     protected $beforeDelete   = [];
     protected $afterDelete    = [];
 
+    /**
+     * Atomically advance the per-user JWT invalidation version.
+     *
+     * This deliberately uses a database expression instead of read-modify-
+     * write so concurrent revoke-all operations cannot overwrite each other.
+     */
+    public function incrementAuthTokenVersion(int $userId): bool
+    {
+        return $this->builder()
+            ->where('id', $userId)
+            ->set('auth_token_version', 'auth_token_version + 1', false)
+            ->update();
+    }
+
 }

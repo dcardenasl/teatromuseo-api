@@ -54,6 +54,7 @@ class UserEntity extends Entity
         'is_active'   => 'boolean',
         'approved_by' => 'integer',
         'invited_by'  => 'integer',
+        'auth_token_version' => 'integer',
     ];
 
     /**

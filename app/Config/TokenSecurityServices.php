@@ -52,6 +52,15 @@ trait TokenSecurityServices
         );
     }
 
+    public static function tokenVersionService(bool $getShared = true): \App\Services\Tokens\TokenVersionService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('tokenVersionService');
+        }
+
+        return new \App\Services\Tokens\TokenVersionService(new \App\Models\UserModel());
+    }
+
     public static function tokenRevocationService(bool $getShared = true): \App\Interfaces\Tokens\TokenRevocationServiceInterface
     {
         if ($getShared) {
