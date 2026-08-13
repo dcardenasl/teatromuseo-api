@@ -15,6 +15,11 @@
   2026-08-11. Lectura autenticada y permission-aware para datos propiedad del
   Hub, con contrato, permisos y pruebas de regresión.
 
+- [x] **SEC-02 — Ciclo de vida de tokens (hallazgo 1.4)** — cerrada
+  2026-08-12. Rotación por familias con detección de reutilización, revocación
+  global inmediata mediante `auth_token_version`, caché negativo eliminado,
+  auditoría crítica y regresiones completas.
+
 ## 🔴 En progreso
 
 ## 🟡 Próximo
