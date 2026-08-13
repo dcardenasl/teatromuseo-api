@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Tokens;
 
 use App\DTO\Request\Identity\RevokeAccessTokenRequestDTO;
+use App\Enums\RefreshTokenRevocationReason;
 use App\Interfaces\Tokens\JwtServiceInterface;
+use App\Interfaces\Tokens\TokenVersionServiceInterface;
 use App\Models\RefreshTokenModel;
 use App\Models\TokenBlacklistModel;
 use CodeIgniter\Cache\CacheInterface;
@@ -22,6 +24,9 @@ use dcardenasl\Ci4ApiCore\Services\AuditServiceInterface;
  */
 readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRevocationServiceInterface
 {
+    use \dcardenasl\Ci4ApiCore\Services\HandlesTransactions;
+    private const REVOCATION_CACHE_PREFIX = 'token_revoked_v2_';
+
     public function __construct(
         protected TokenBlacklistModel $blacklistModel,
         protected RefreshTokenModel $refreshTokenModel,
@@ -29,8 +34,8 @@ readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRev
         protected AuditServiceInterface $auditService,
         protected CacheInterface $cache,
         protected BearerTokenService $bearerTokenService,
+        protected TokenVersionServiceInterface $tokenVersionService,
         private int $accessTokenTtl = 3600,
-        private int $revocationCacheTtl = 60
     ) {
     }
 
@@ -49,7 +54,7 @@ readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRev
         }
 
         // Mark as revoked in cache immediately for performance
-        $cacheKey = "token_revoked_{$jti}";
+        $cacheKey = self::REVOCATION_CACHE_PREFIX . $jti;
         $this->cache->save($cacheKey, 1, $this->accessTokenTtl);
 
         $this->auditService->log('token_revoked', 'tokens', null, [], ['jti' => $jti], $context);
@@ -94,7 +99,7 @@ readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRev
      */
     public function isRevoked(string $jti): bool
     {
-        $cacheKey = "token_revoked_{$jti}";
+        $cacheKey = self::REVOCATION_CACHE_PREFIX . $jti;
 
         $cached = $this->cache->get($cacheKey);
         if ($cached !== null) {
@@ -102,9 +107,9 @@ readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRev
         }
 
         $isBlacklisted = $this->blacklistModel->isBlacklisted($jti);
-        $ttl = $isBlacklisted ? $this->accessTokenTtl : $this->revocationCacheTtl;
-
-        $this->cache->save($cacheKey, $isBlacklisted ? 1 : 0, $ttl);
+        if ($isBlacklisted) {
+            $this->cache->save($cacheKey, 1, $this->accessTokenTtl);
+        }
 
         return $isBlacklisted;
     }
@@ -114,7 +119,13 @@ readonly class TokenRevocationService implements \App\Interfaces\Tokens\TokenRev
      */
     public function revokeAllUserTokens(int $userId, ?SecurityContext $context = null): bool
     {
-        $this->refreshTokenModel->revokeAllUserTokens($userId);
+        $this->wrapInTransaction(function () use ($userId): void {
+            $this->refreshTokenModel->revokeAllUserTokens(
+                $userId,
+                RefreshTokenRevocationReason::RevokeAll
+            );
+            $this->tokenVersionService->increment($userId);
+        });
 
         $this->auditService->log('all_tokens_revoked', 'users', $userId, [], [], $context);
 

@@ -77,8 +77,8 @@ trait TokenSecurityServices
             static::auditService(),
             static::cache(),
             static::bearerTokenService(),
+            static::tokenVersionService(),
             $apiConfig->jwtAccessTokenTtl,
-            $apiConfig->jwtRevocationCacheTtl
         );
     }
 
