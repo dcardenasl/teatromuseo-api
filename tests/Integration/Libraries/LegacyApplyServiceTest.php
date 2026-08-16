@@ -74,6 +74,11 @@ final class LegacyApplyServiceTest extends IntegrationTestCase
         $this->assertSame('Familiar', $entries[1]['wizard_extra']['audience']);
         $this->assertSame('$ 3.000', $entries[1]['wizard_extra']['price_regular']);
         $this->assertSame('2026-08-02', $entries[2]['wizard_extra']['recorded_at']);
+        $videoEntry = current(array_filter(
+            $entries,
+            static fn (array $entry): bool => ($entry['translations'][0]['title'] ?? '') === 'Video Fixture'
+        ));
+        $this->assertSame('published', $videoEntry['workflow_status']);
     }
 
     public function testSliceAMigratesMoreThanTenWorksAndExcludesKnownTestRows(): void

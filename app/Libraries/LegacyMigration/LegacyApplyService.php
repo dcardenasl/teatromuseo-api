@@ -532,7 +532,10 @@ final class LegacyApplyService
         $response = $this->cms->post('/cms/entries', [
             'collection_id' => $collectionId,
             'author_id' => null,
-            'workflow_status' => 'draft',
+            // The legacy importer only selects rows whose source display flag
+            // is enabled. Preserve that editorial decision in the canonical
+            // workflow so required auto-created blocks are public as well.
+            'workflow_status' => 'published',
             'published_at' => $publishedAt !== null ? $this->clampToToday($publishedAt) . ' 00:00:00' : null,
             'scheduled_at' => null,
             'is_featured' => false,
