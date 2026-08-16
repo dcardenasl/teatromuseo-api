@@ -50,7 +50,12 @@ final class LegacyMigrationRepositoryTest extends IntegrationTestCase
         );
 
         $this->assertSame($mapId, $sameMapId);
-        $this->assertSame(1, $this->db->table('legacy_migration_map')->countAllResults());
+        $this->assertSame(
+            1,
+            $this->db->table('legacy_migration_map')
+                ->where('run_id', $runId)
+                ->countAllResults()
+        );
 
         $issueId = $this->repository->recordIssue(
             $runId,
