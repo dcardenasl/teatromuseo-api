@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`sn_obra` occurrence scheduling** — `LegacyScheduleParser` now parses `hora_obra` strictly
   (quarantining rows with an invalid or missing time instead of silently defaulting to midnight)
   and supports multiple showtimes per row, creating one occurrence per parsed time instead of one.
+- **`LegacyApplyService`** — auto-created video entries are now published instead of drafted,
+  matching the legacy importer's own display-flag filter that only selects rows meant to be
+  visible.
 
 - **`Config\Database`** — replaced the leftover starter-kit placeholder database name with the
   project's actual default (`teatromuseo_api`).
