@@ -91,6 +91,51 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     }
 
     /**
+     * Return only the availability counters consumed by the admin dashboard.
+     *
+     * The full metrics endpoint intentionally keeps percentile and slow
+     * request analysis. The dashboard summary must not pay that cost on every
+     * cold snapshot: those calculations sort/scan the request log and are not
+     * displayed by the dashboard widget.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDashboardStats(string $period = 'day'): array
+    {
+        $since = $this->getSinceFromPeriod($period);
+        $query = $this->db->query(
+            'SELECT COUNT(*) AS total_requests,
+                    SUM(CASE WHEN response_code >= 200 AND response_code < 400 THEN 1 ELSE 0 END) AS successful_requests,
+                    SUM(CASE WHEN response_code >= 400 THEN 1 ELSE 0 END) AS failed_requests
+             FROM ' . $this->table . '
+             WHERE created_at >= ?',
+            [$since]
+        );
+        if (! $query instanceof BaseResult) {
+            throw new RuntimeException('Dashboard request statistics query failed.');
+        }
+
+        $row = $query->getRowArray();
+        $totalRequests = (int) ($row['total_requests'] ?? 0);
+        $successfulRequests = (int) ($row['successful_requests'] ?? 0);
+        $failedRequests = (int) ($row['failed_requests'] ?? 0);
+
+        return [
+            'period' => $period,
+            'since' => $since,
+            'total_requests' => $totalRequests,
+            'successful_requests' => $successfulRequests,
+            'failed_requests' => $failedRequests,
+            'error_rate_percent' => $totalRequests > 0
+                ? round(($failedRequests / $totalRequests) * 100, 2)
+                : 0.0,
+            'availability_percent' => $totalRequests > 0
+                ? round(($successfulRequests / $totalRequests) * 100, 2)
+                : 100.0,
+        ];
+    }
+
+    /**
      * Calculate both percentiles in one ordered database projection.
      *
      * The rank intentionally preserves the previous LIMIT/OFFSET semantics:
