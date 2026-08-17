@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   average response time are now computed in a single aggregate query instead of five separate
   round trips, and both latency percentiles are read from one window-function query instead of
   two ordered LIMIT/OFFSET scans.
+- **Admin dashboard request metrics** — `DashboardSummaryRepository` now calls the new
+  `RequestLogModel::getDashboardStats()`, a single aggregate query that skips the percentile and
+  slow-request analysis the dashboard widget never displays.
 
 ### Fixed
 
