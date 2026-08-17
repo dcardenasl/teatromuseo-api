@@ -135,13 +135,18 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
      * @param int $limit
      * @return array<int, array<int|string, bool|float|int|object|string|null>|object>
      */
-    public function getSlowRequests(int $threshold = 1000, int $limit = 10): array
+    public function getSlowRequests(int $threshold = 1000, int $limit = 10, ?string $period = null): array
     {
-        return $this->select('method, uri, response_time, created_at')
+        $builder = $this->select('method, uri, response_time, created_at')
             ->where('response_time >', $threshold)
             ->orderBy('response_time', 'DESC')
-            ->limit($limit)
-            ->find();
+            ->limit($limit);
+
+        if ($period !== null) {
+            $builder->where('created_at >=', $this->getSinceFromPeriod($period));
+        }
+
+        return $builder->find();
     }
 
     private function getSinceFromPeriod(string $period): string

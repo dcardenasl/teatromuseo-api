@@ -41,7 +41,8 @@ readonly class MetricsService implements \App\Interfaces\System\MetricsServiceIn
             'request_stats' => $requestStats,
             'slow_requests' => $this->requestLogModel->getSlowRequests(
                 $this->defaultSlowQueryThreshold,
-                5
+                5,
+                $period,
             ),
             'slo' => [
                 'availability_percent' => $requestStats['availability_percent'] ?? 100,
