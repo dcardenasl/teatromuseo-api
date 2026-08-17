@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use CodeIgniter\Database\BaseResult;
+use RuntimeException;
+
 class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
 {
     protected $table = 'request_logs';
@@ -30,32 +33,34 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     {
         $since = $this->getSinceFromPeriod($period);
 
-        $totalRequests = (int) $this->db->table($this->table)
-            ->where('created_at >=', $since)
-            ->countAllResults();
+        // Keep all scalar counters in one database aggregation. The dashboard
+        // must not count the same time window with a separate PHP/SQL round
+        // trip for every status bucket.
+        $aggregate = $this->db->query(
+            'SELECT COUNT(*) AS total_requests,
+                    SUM(CASE WHEN response_code >= 200 AND response_code < 400 THEN 1 ELSE 0 END) AS successful_requests,
+                    SUM(CASE WHEN response_code >= 400 THEN 1 ELSE 0 END) AS failed_requests,
+                    AVG(response_time) AS avg_response_time,
+                    SUM(CASE WHEN response_code >= 200 AND response_code < 300 THEN 1 ELSE 0 END) AS status_2xx,
+                    SUM(CASE WHEN response_code >= 300 AND response_code < 400 THEN 1 ELSE 0 END) AS status_3xx,
+                    SUM(CASE WHEN response_code >= 400 AND response_code < 500 THEN 1 ELSE 0 END) AS status_4xx,
+                    SUM(CASE WHEN response_code >= 500 AND response_code < 600 THEN 1 ELSE 0 END) AS status_5xx
+             FROM ' . $this->table . '
+             WHERE created_at >= ?',
+            [$since]
+        );
+        if (! $aggregate instanceof BaseResult) {
+            throw new RuntimeException('Request statistics aggregate query failed.');
+        }
 
-        $successfulRequests = (int) $this->db->table($this->table)
-            ->where('created_at >=', $since)
-            ->where('response_code >=', 200)
-            ->where('response_code <', 400)
-            ->countAllResults();
-
-        $failedRequests = (int) $this->db->table($this->table)
-            ->where('created_at >=', $since)
-            ->where('response_code >=', 400)
-            ->countAllResults();
-
-        $avgResponseTimeQuery = $this->db->table($this->table)
-            ->select('AVG(response_time) as avg_response_time')
-            ->where('created_at >=', $since)
-            ->get();
-
-        $avgResponseTimeRaw = $avgResponseTimeQuery ? $avgResponseTimeQuery->getRow() : null;
-        $avgResponseTime = $avgResponseTimeRaw ? (float) ($avgResponseTimeRaw->avg_response_time ?? 0) : 0.0;
+        $aggregateRow = $aggregate->getRowArray();
+        $totalRequests = (int) ($aggregateRow['total_requests'] ?? 0);
+        $successfulRequests = (int) ($aggregateRow['successful_requests'] ?? 0);
+        $failedRequests = (int) ($aggregateRow['failed_requests'] ?? 0);
+        $avgResponseTime = (float) ($aggregateRow['avg_response_time'] ?? 0);
 
         // Optimized Percentile Calculation (O(1) Memory)
-        $p95 = $this->getPercentileFromDb($since, $totalRequests, 0.95);
-        $p99 = $this->getPercentileFromDb($since, $totalRequests, 0.99);
+        [$p95, $p99] = $this->getPercentilesFromDb($since, $totalRequests);
 
         $errorRate = $totalRequests > 0 ? ($failedRequests / $totalRequests) * 100 : 0.0;
         $availability = $totalRequests > 0 ? ($successfulRequests / $totalRequests) * 100 : 100.0;
@@ -72,7 +77,12 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
             'p99_response_time_ms' => $p99,
             'error_rate_percent' => round($errorRate, 2),
             'availability_percent' => round($availability, 2),
-            'status_code_breakdown' => $this->getStatusCodeBreakdown($since),
+            'status_code_breakdown' => [
+                '2xx' => (int) ($aggregateRow['status_2xx'] ?? 0),
+                '3xx' => (int) ($aggregateRow['status_3xx'] ?? 0),
+                '4xx' => (int) ($aggregateRow['status_4xx'] ?? 0),
+                '5xx' => (int) ($aggregateRow['status_5xx'] ?? 0),
+            ],
             'slo' => [
                 'p95_target_ms' => $latencyTarget,
                 'p95_target_met' => $p95 <= $latencyTarget,
@@ -81,28 +91,41 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     }
 
     /**
-     * Efficiently calculates a percentile value directly from the DB using LIMIT/OFFSET.
+     * Calculate both percentiles in one ordered database projection.
+     *
+     * The rank intentionally preserves the previous LIMIT/OFFSET semantics:
+     * floor(percentile * count) is the zero-based offset.
+     *
+     * @return array{0: float, 1: float}
      */
-    private function getPercentileFromDb(string $since, int $totalCount, float $percentile): float
+    private function getPercentilesFromDb(string $since, int $totalCount): array
     {
         if ($totalCount === 0) {
-            return 0.0;
+            return [0.0, 0.0];
         }
 
-        $offset = (int) floor($percentile * $totalCount);
-        // Ensure offset is within bounds (0 to totalCount - 1)
-        $offset = max(0, min($offset, $totalCount - 1));
+        $query = $this->db->query(
+            'SELECT MAX(CASE WHEN row_number_value = FLOOR(total_count * 0.95) + 1 THEN response_time END) AS p95,
+                    MAX(CASE WHEN row_number_value = FLOOR(total_count * 0.99) + 1 THEN response_time END) AS p99
+             FROM (
+                 SELECT id, response_time,
+                        ROW_NUMBER() OVER (ORDER BY response_time ASC, id ASC) AS row_number_value,
+                        COUNT(*) OVER () AS total_count
+                 FROM ' . $this->table . '
+                 WHERE created_at >= ?
+             ) ranked',
+            [$since]
+        );
+        if (! $query instanceof BaseResult) {
+            throw new RuntimeException('Request statistics percentile query failed.');
+        }
 
-        $query = $this->db->table($this->table)
-            ->select('response_time')
-            ->where('created_at >=', $since)
-            ->orderBy('response_time', 'ASC')
-            ->limit(1, $offset)
-            ->get();
+        $row = $query->getRowArray();
 
-        $row = $query ? $query->getRow() : null;
-
-        return $row ? (float) $row->response_time : 0.0;
+        return [
+            (float) ($row['p95'] ?? 0),
+            (float) ($row['p99'] ?? 0),
+        ];
     }
 
     /**
@@ -201,32 +224,4 @@ class RequestLogModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
         };
     }
 
-    /**
-     * @return array{'2xx':int,'3xx':int,'4xx':int,'5xx':int}
-     */
-    private function getStatusCodeBreakdown(string $since): array
-    {
-        return [
-            '2xx' => (int) $this->db->table($this->table)
-                ->where('created_at >=', $since)
-                ->where('response_code >=', 200)
-                ->where('response_code <', 300)
-                ->countAllResults(),
-            '3xx' => (int) $this->db->table($this->table)
-                ->where('created_at >=', $since)
-                ->where('response_code >=', 300)
-                ->where('response_code <', 400)
-                ->countAllResults(),
-            '4xx' => (int) $this->db->table($this->table)
-                ->where('created_at >=', $since)
-                ->where('response_code >=', 400)
-                ->where('response_code <', 500)
-                ->countAllResults(),
-            '5xx' => (int) $this->db->table($this->table)
-                ->where('created_at >=', $since)
-                ->where('response_code >=', 500)
-                ->where('response_code <', 600)
-                ->countAllResults(),
-        ];
-    }
 }
