@@ -55,6 +55,43 @@ class RequestLogModelTest extends IntegrationTestCase
         $this->assertArrayHasKey('p95_target_met', $stats['slo']);
     }
 
+    public function testGetDashboardStatsSkipsPercentileAndSlowRequestWork(): void
+    {
+        $model = new RequestLogModel();
+        $model->builder()->truncate();
+        $now = date('Y-m-d H:i:s');
+
+        $model->insert([
+            'method' => 'GET',
+            'uri' => '/api/v1/dashboard',
+            'user_id' => null,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+            'response_code' => 200,
+            'response_time' => 5000,
+            'created_at' => $now,
+        ]);
+        $model->insert([
+            'method' => 'GET',
+            'uri' => '/api/v1/dashboard',
+            'user_id' => null,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'phpunit',
+            'response_code' => 500,
+            'response_time' => 6000,
+            'created_at' => $now,
+        ]);
+
+        $stats = $model->getDashboardStats('day');
+
+        $this->assertSame(2, $stats['total_requests']);
+        $this->assertSame(1, $stats['successful_requests']);
+        $this->assertSame(1, $stats['failed_requests']);
+        $this->assertSame(50.0, (float) $stats['availability_percent']);
+        $this->assertArrayNotHasKey('p95_response_time_ms', $stats);
+        $this->assertArrayNotHasKey('slow_requests', $stats);
+    }
+
     public function testGetTimeseriesBucketsRequestsAndFillsGapsWithZeros(): void
     {
         $model = new RequestLogModel();
