@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`RequestLogModel::getSlowRequests()`** — accepts an optional `$period` argument so the
+  admin dashboard's slow-requests list can be scoped to the same time window as its request
+  stats instead of scanning all-time data.
 - **`files:audit` command** — read-only CLI diagnostic that diffs physical disk files against
   `files` table records; performs no destructive operations.
 - **WebP upload support** — added `webp` to the documented file types accepted by the shared
@@ -53,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`legacy:dry-run` / `legacy:apply` slice C** — now also migrates the Anímate festival
   (`sn_obra` where `url=animate`) into the `festivales` collection as its own entry, alongside
   the existing `sn_upa` festivals.
+
+### Changed
+
+- **`RequestLogModel::getStats()`** — request counts, the status-code breakdown, and the
+  average response time are now computed in a single aggregate query instead of five separate
+  round trips, and both latency percentiles are read from one window-function query instead of
+  two ordered LIMIT/OFFSET scans.
 
 ### Fixed
 
