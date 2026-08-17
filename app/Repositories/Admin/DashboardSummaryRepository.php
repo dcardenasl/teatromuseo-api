@@ -39,8 +39,7 @@ final class DashboardSummaryRepository implements DashboardSummaryRepositoryInte
                 $recentFiles
             ),
             'metrics' => [
-                'request_stats' => $this->requestLogs->getStats('24h'),
-                'slow_requests' => $this->requestLogs->getSlowRequests(1000, 5, '24h'),
+                'request_stats' => $this->requestLogs->getDashboardStats('24h'),
             ],
         ];
     }
