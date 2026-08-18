@@ -51,6 +51,11 @@ class RoleController extends ApiController
         return $this->handleRequest(fn ($dto, $context) => $this->roleService->show($id, $context));
     }
 
+    public function workspace(int $id): ResponseInterface
+    {
+        return $this->handleRequest(fn () => Services::roleWorkspaceService()->read($id));
+    }
+
     public function delete(int $id): ResponseInterface
     {
         return $this->handleRequest(fn ($dto, $context) => $this->roleService->destroy($id, $context));

@@ -2714,6 +2714,48 @@
                 }
             }
         },
+        "/api/v1/iam/roles/{id}/workspace": {
+            "get": {
+                "tags": [
+                    "Iam"
+                ],
+                "summary": "Get the role editor workspace",
+                "operationId": "3bc1f60c9fc613eb6c2add668ea37ca2",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Role workspace",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RoleWorkspaceResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/roles": {
             "get": {
                 "tags": [
@@ -5159,6 +5201,28 @@
                         "type": "string",
                         "example": "2026-02-26 12:00:00",
                         "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "RoleWorkspaceResponse": {
+                "title": "Role workspace response",
+                "properties": {
+                    "role": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "allPermissions": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PermissionResponse"
+                        }
+                    },
+                    "assignedPermissionIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
                     }
                 },
                 "type": "object"

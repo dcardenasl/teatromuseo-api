@@ -40,6 +40,33 @@ class RoleModel extends BaseAuditableModel
     ];
 
     /**
+     * Single-read projection for the authenticated role editor workspace.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findWorkspaceRows(int $roleId, int $limit = 2000): array
+    {
+        $query = $this->builder()
+            ->select('roles.id, roles.code, roles.name, roles.description, roles.is_system,
+                      roles.created_at, roles.updated_at,
+                      permissions.id AS permission_id, permissions.application_id AS permission_application_id,
+                      permissions.code AS permission_code, permissions.resource AS permission_resource,
+                      permissions.action AS permission_action, permissions.description AS permission_description,
+                      permissions.created_at AS permission_created_at, permissions.updated_at AS permission_updated_at,
+                      permission_apps.name AS permission_application_name,
+                      role_permissions.permission_id AS assigned_permission_id')
+            ->join('permissions', '1 = 1', 'left', false)
+            ->join('applications permission_apps', 'permission_apps.id = permissions.application_id', 'left')
+            ->join('role_permissions', 'role_permissions.role_id = roles.id AND role_permissions.permission_id = permissions.id', 'left', false)
+            ->where('roles.id', $roleId)
+            ->orderBy('permissions.code', 'ASC')
+            ->limit($limit);
+        $result = $query->get();
+
+        return $result === false ? [] : array_values($result->getResultArray());
+    }
+
+    /**
      * Resolve a role's primary key by its unique code.
      */
     public function findIdByCode(string $code): ?int

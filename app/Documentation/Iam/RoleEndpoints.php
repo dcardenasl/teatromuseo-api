@@ -14,6 +14,28 @@ use OpenApi\Attributes as OA;
 class RoleEndpoints
 {
     #[OA\Get(
+        path: '/api/v1/iam/roles/{id}/workspace',
+        tags: ['Iam'],
+        summary: 'Get the role editor workspace',
+        security: [['bearerAuth' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Role workspace',
+                content: new OA\JsonContent(ref: '#/components/schemas/RoleWorkspaceResponse')
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/UnauthorizedResponse'),
+            new OA\Response(response: 404, description: 'Not found'),
+        ]
+    )]
+    public function workspace(): void
+    {
+    }
+
+    #[OA\Get(
         path: '/api/v1/roles',
         tags: ['Iam'],
         summary: 'List Roles',

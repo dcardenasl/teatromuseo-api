@@ -6,6 +6,15 @@ namespace Config;
 
 trait IamDomainServices
 {
+    public static function roleWorkspaceService(bool $getShared = true): \App\Services\Iam\RoleWorkspaceService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('roleWorkspaceService');
+        }
+
+        return new \App\Services\Iam\RoleWorkspaceService(model(\App\Models\RoleModel::class));
+    }
+
     public static function roleResponseMapper(bool $getShared = true): \dcardenasl\Ci4ApiCore\Mappers\ResponseMapperInterface
     {
         if ($getShared) {
