@@ -44,6 +44,31 @@ class FileControllerTest extends ApiTestCase
         $result->assertStatus(200);
     }
 
+    public function testUserCanListAndReadAnotherUsersFileWhenSharedReadScopeIsEnabled(): void
+    {
+        $otherUserId = $this->createUser('shared-library-' . uniqid() . '@example.com', 'ValidPass123!', 'user');
+        $fileId = $this->createFile($otherUserId);
+
+        $list = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get('/api/v1/files?per_page=100');
+        $list->assertStatus(200);
+        $this->assertTrue($this->payloadContainsFileId($this->getResponseJson($list), $fileId));
+
+        $info = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get("/api/v1/files/{$fileId}/info");
+        $info->assertStatus(200);
+        $this->assertTrue($this->payloadContainsFileId($this->getResponseJson($info), $fileId));
+
+        $download = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get("/api/v1/files/{$fileId}");
+        $download->assertStatus(200);
+
+        $picker = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get('/api/v1/files/picker-manifest');
+        $picker->assertStatus(200);
+        $this->assertTrue($this->payloadContainsFileId($this->getResponseJson($picker), $fileId));
+    }
+
     public function testPickerManifestReturnsLightweightItems(): void
     {
         \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));
@@ -374,5 +399,24 @@ class FileControllerTest extends ApiTestCase
             'metadata' => json_encode(['extension' => 'pdf']),
             'uploaded_at' => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    private function payloadContainsFileId(mixed $payload, int $fileId): bool
+    {
+        if (! is_array($payload)) {
+            return false;
+        }
+
+        if (isset($payload['id']) && (int) $payload['id'] === $fileId) {
+            return true;
+        }
+
+        foreach ($payload as $value) {
+            if ($this->payloadContainsFileId($value, $fileId)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

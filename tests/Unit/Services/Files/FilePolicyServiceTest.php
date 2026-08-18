@@ -71,6 +71,20 @@ final class FilePolicyServiceTest extends CIUnitTestCase
         $this->assertFalse($service->canAccessFile($file, 7, FileAction::DELETE, $reader));
     }
 
+    public function testScopedModeDeniesForeignReadsWhenPrivilegedBypassIsDisabled(): void
+    {
+        $policy = new FilePolicy();
+        $policy->userScopedFiles = true;
+        $policy->allowPrivilegedReadBypass = false;
+        $service = new FilePolicyService($policy);
+        $reader = new SecurityContext(7, [], ['files.read']);
+        $file = new FileEntity(['id' => 10, 'user_id' => 22]);
+
+        $this->assertFalse($service->canAccessFile($file, 7, FileAction::VIEW, $reader));
+        $this->assertFalse($service->canAccessFile($file, 7, FileAction::DOWNLOAD, $reader));
+        $this->assertFalse($service->canAccessFile($file, 7, FileAction::VIEW_USAGES, $reader));
+    }
+
     public function testReadPermissionCannotMutateAnotherUsersFile(): void
     {
         $service = new FilePolicyService(new FilePolicy());
