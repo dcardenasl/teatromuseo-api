@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Libraries;
 
 use App\Libraries\LegacyMigration\LegacyScheduleParser;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class LegacyScheduleParserTest extends TestCase
@@ -16,7 +17,7 @@ final class LegacyScheduleParserTest extends TestCase
         $this->parser = new LegacyScheduleParser();
     }
 
-    /** @dataProvider validTimes */
+    #[DataProvider('validTimes')]
     public function testNormalizesLegacyTimeSuffixes(string $raw, string $expected): void
     {
         $this->assertSame($expected, $this->parser->parse('2017-03-25', $raw));
@@ -35,7 +36,7 @@ final class LegacyScheduleParserTest extends TestCase
         yield 'legacy trailing zero typo' => ['21:000 hrs', '2017-03-25 21:00:00'];
     }
 
-    /** @dataProvider invalidTimes */
+    #[DataProvider('invalidTimes')]
     public function testRejectsInvalidTimesInsteadOfUsingMidnight(string $raw): void
     {
         $this->assertNull($this->parser->parse('2017-03-25', $raw));
