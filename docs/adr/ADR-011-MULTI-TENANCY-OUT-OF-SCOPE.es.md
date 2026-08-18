@@ -20,7 +20,10 @@ Específicamente:
 - `permissions.application_id` scopea códigos de permiso por aplicación, no por tenant.
 - `BaseAuditableModel` no tiene columna de tenant; las queries no filtran por tenant.
 - Las entradas del audit log no registran contexto de tenant.
-- Los uploads de archivos por defecto van por scope de usuario (`FILES_USER_SCOPED=true`); no tienen scope de tenant alguno.
+- Los uploads de archivos se comparten por defecto dentro del tenant único
+  (`FILE_USER_SCOPED_FILES=false`); una instalación que necesite media por
+  usuario puede activarlo con `true`. Esto es una política de biblioteca de
+  archivos, no un scope de tenant.
 
 Si un proyecto necesita multi-tenancy, el camino soportado es **forkear** el kit (o generar un proyecto desde él via `new-project.sh`) y agregar la columna de tenant donde corresponda. No prometemos un upgrade non-breaking de regreso desde un fork tenanted.
 
