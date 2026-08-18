@@ -51,7 +51,7 @@ use OpenApi\Attributes as OA;
     responses: [
         new OA\Response(
             response: 200,
-            description: 'Metrics workspace',
+            description: 'Metrics workspace containing summary and time-series data for the selected period.',
             content: new OA\JsonContent(
                 properties: [
                     new OA\Property(property: 'status', type: 'string', example: 'success'),

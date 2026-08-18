@@ -3065,7 +3065,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Metrics workspace",
+                        "description": "Metrics workspace containing summary and time-series data for the selected period.",
                         "content": {
                             "application/json": {
                                 "schema": {
