@@ -6,6 +6,12 @@
 
 ## ✅ Completadas
 
+- [x] **FILES-READ-01 — Biblioteca de medios compartida cross-owner** — cerrada
+  2026-08-18. `FILE_USER_SCOPED_FILES=false` queda como la única configuración
+  de scope para que `files.read` liste, consulte, descargue y use el picker con
+  archivos de cualquier usuario. Se añadieron regresiones de lectura cross-owner
+  sin abrir `files.write`/`files.admin` para mutaciones; quality verde.
+
 - [x] **SEC-01 — Control de acceso en gestión de archivos** — cerrada
   2026-08-12. Se eliminó el bypass de ownership por booleano, se centralizó la
   política por acción, se añadió `files.admin`, filtros de ruta, migración
