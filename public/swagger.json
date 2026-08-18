@@ -2997,6 +2997,65 @@
                 ]
             }
         },
+        "/api/v1/metrics/workspace": {
+            "get": {
+                "tags": [
+                    "Metrics"
+                ],
+                "summary": "Get the summary and timeseries metrics workspace",
+                "operationId": "2482aa40cad393fd1cd98d6aaef24353",
+                "parameters": [
+                    {
+                        "name": "period",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": "24h",
+                            "enum": [
+                                "1h",
+                                "24h",
+                                "7d",
+                                "30d"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metrics workspace",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "503": {
+                        "description": "Metrics disabled"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/metrics/requests": {
             "get": {
                 "tags": [
