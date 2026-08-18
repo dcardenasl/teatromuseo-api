@@ -49,13 +49,15 @@ class GoogleLoginAction
         }
         $context ??= SecurityContext::anonymous();
         $email = strtolower($identity->email);
+        $locale = $request->locale;
+        $emailLocale = $this->normalizeLocale($locale);
 
         /** @var UserEntity|null $user */
         $user = $this->userRepository->findByEmailWithDeleted($email);
 
         if (!$user) {
             $pending = $this->googleHandler->createPendingUser($identity->toArray());
-            $this->sendPendingApprovalEmail($pending);
+            $this->sendPendingApprovalEmail($pending, $emailLocale);
 
             $userContext = new SecurityContext((int) $pending->id, $context->metadata);
             $this->auditService->log(
@@ -75,7 +77,7 @@ class GoogleLoginAction
 
         if ($user->deleted_at !== null) {
             $user = $this->googleHandler->reactivateDeletedUser($user, $identity->toArray());
-            $this->sendPendingApprovalEmail($user);
+            $this->sendPendingApprovalEmail($user, $emailLocale);
 
             return OperationResult::accepted(
                 ['user' => PendingRegistrationResponseDTO::fromUser($user)->toArray()],
@@ -137,15 +139,69 @@ class GoogleLoginAction
         );
     }
 
-    private function sendPendingApprovalEmail(object $user): void
+    private function sendPendingApprovalEmail(object $user, string $locale): void
     {
         try {
             $this->emailService->queueTemplate('pending-approval-google', (string) $user->email, [
-                'subject' => lang('Email.pendingApprovalGoogle.subject'),
+                'subject' => $this->subjectForLocale('Email.pendingApprovalGoogle.subject', $locale),
                 'display_name' => method_exists($user, 'getDisplayName') ? (string) $user->getDisplayName() : (string) $user->email,
+                'locale' => $locale,
             ]);
         } catch (\Throwable $exception) {
             log_message('error', 'Failed to queue email: ' . $exception->getMessage());
+        }
+    }
+
+    private function normalizeLocale(?string $locale): string
+    {
+        $locale = strtolower(trim((string) $locale));
+        if ($locale === '') {
+            $locale = (string) service('request')->getLocale();
+        }
+
+        $supported = config('App')->supportedLocales ?? [];
+        foreach ($supported as $supportedLocale) {
+            if (strtolower(trim((string) $supportedLocale)) === $locale) {
+                return $locale;
+            }
+        }
+
+        return config('App')->defaultLocale ?? 'en';
+    }
+
+    private function subjectForLocale(string $line, string $locale): string
+    {
+        $previous = $this->currentLocale();
+        $this->applyLocale($locale);
+
+        try {
+            return lang($line);
+        } finally {
+            if ($previous !== null) {
+                $this->applyLocale($previous);
+            }
+        }
+    }
+
+    private function currentLocale(): ?string
+    {
+        try {
+            return (string) service('request')->getLocale();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function applyLocale(string $locale): void
+    {
+        try {
+            service('request')->setLocale($locale);
+        } catch (\Throwable) {
+        }
+
+        try {
+            service('language')->setLocale($locale);
+        } catch (\Throwable) {
         }
     }
 }
