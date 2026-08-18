@@ -22,13 +22,16 @@ Environment Variables:
 - `FILE_ALLOWED_TYPES`: Comma-separated extensions (e.g., `jpg,png,pdf`).
 - `FILE_DEFAULT_VISIBILITY`: Default visibility stored with uploads when a caller does not provide one.
 - `FILE_ALLOWED_VISIBILITY`: Comma-separated allow-list for accepted visibility values.
-- `FILE_USER_SCOPED_FILES`: `false` exposes all files to authenticated readers; `true` restores owner scoping.
+- `FILE_USER_SCOPED_FILES`: canonical read-scope switch. `false` exposes all files to authenticated readers; `true` restores owner scoping.
 - `FILE_ALLOW_PRIVILEGED_READ_BYPASS`: only relevant when `FILE_USER_SCOPED_FILES=true`. Defaults to
   `true` — a caller holding `files.read` can view/download files they don't own, bypassing the
   per-user scoping. This is intentional for a CMS where staff routinely need to read files uploaded
   by other users (see `FilePolicyService::canBypassOwnershipForRead()`), not an oversight. Set to
   `false` if a deployment needs strict per-owner isolation even for privileged roles.
 - `FILE_ALLOW_PUBLIC_VISIBILITY`: `true` allows trusted callers to persist public uploads.
+
+`FILE_DEFAULT_VISIBILITY` is upload metadata only; it does not grant or deny
+read access.
 
 Validation:
 All file operations use DTO-based validation. The processors ensure that files are structurally sound and safe before the `FileService` attempts persistence.

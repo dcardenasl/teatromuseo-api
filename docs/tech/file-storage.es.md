@@ -20,6 +20,16 @@ Variables de Entorno:
 - `FILE_STORAGE_DRIVER`: `local` o `s3`.
 - `FILE_MAX_SIZE`: Límite en bytes.
 - `FILE_ALLOWED_TYPES`: Extensiones separadas por comas (ej. `jpg,png,pdf`).
+- `FILE_USER_SCOPED_FILES`: interruptor canónico del scope de lectura.
+  `false` permite que lectores autenticados consulten todos los archivos;
+  `true` restaura el scope por propietario.
+- `FILE_ALLOW_PRIVILEGED_READ_BYPASS`: solo aplica cuando el scope por
+  propietario está activo. Con `true`, `files.read` puede leer archivos ajenos.
+- `FILE_ALLOW_PUBLIC_VISIBILITY`: permite persistir uploads públicos cuando la
+  política del caller lo permite.
+
+`FILE_DEFAULT_VISIBILITY` solo es metadata del upload; no concede ni deniega
+acceso de lectura.
 
 Validación:
 Todas las operaciones de archivos utilizan validación basada en DTOs. Los procesadores garantizan que los archivos sean estructuralmente sólidos y seguros antes de que el `FileService` intente la persistencia.
