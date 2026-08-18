@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Public-site cache permissions** — added `system.public-cache.read` and
   `system.public-cache.invalidate` to the RBAC bootstrap roles for secured cache monitoring
   and invalidation from administrative clients.
+- **Locale-aware Google login pending-approval emails** — `POST /auth/google` now accepts an
+  optional `locale` field; `GoogleLoginAction` uses it (falling back to the request locale, then
+  the app default) to send the pending-approval email in the caller's language instead of always
+  rendering it in the server's default locale.
 
 - **Legacy migration slices A–C** — migration services now cover courses, teachers, works,
   companies, videos, news, publications, institutional sliders, festival galleries, and the
@@ -69,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`FILE_USER_SCOPED_FILES` collision** — `FilePolicy` no longer falls back to the legacy
+  `FILES_USER_SCOPED` env var, which could silently override the canonical flag on deployments
+  still carrying the old variable. `FILE_USER_SCOPED_FILES` is now the single source of truth for
+  the shared read-scope switch, matching the ADR-011 note.
 - **File access control** — `FileService` no longer accepts a caller-supplied ownership-bypass
   flag; authorization is now action-based and centralized in `FilePolicyService`. Mutating
   actions (`delete`, `restore`, `force_delete`, `replace`, `update_metadata`,
