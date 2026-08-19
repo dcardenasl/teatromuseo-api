@@ -12,9 +12,21 @@ interface DomainFileUsageClientInterface
      * treated as "no usages reported" — it never blocks a Hub file
      * operation on its own. Returns the shared usages contract shape.
      *
-     * @return array<array{source: string, resource: string, resource_id: int, label: string|null, role: string}>
+     * @return list<array{source: string, resource: string, resource_id: int, label: string|null, role: string}>
      */
     public function collectUsages(int $fileId): array;
+
+    /**
+     * Ask every configured domain app for usages and preserve source health
+     * plus optional domain context for composed administrative reads.
+     *
+     * @return array{
+     *     complete: bool,
+     *     sources: array<string, 'ok'|'unavailable'>,
+     *     usages: list<array<string, mixed>>
+     * }
+     */
+    public function collectUsageSnapshot(int $fileId): array;
 
     /**
      * Best-effort notification to every configured domain app that a file's

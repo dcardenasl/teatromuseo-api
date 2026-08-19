@@ -115,6 +115,16 @@ class FileController extends ApiController
     }
 
     /**
+     * Return the source-aware usage snapshot used by composed Admin reads.
+     */
+    public function usageSnapshot(int $id): ResponseInterface
+    {
+        return $this->handleRequest(
+            fn ($dto, $context) => $this->fileService->getUsageSnapshot($id, $context)
+        );
+    }
+
+    /**
      * Delete existing image variants and regenerate them from the stored original.
      */
     public function regenerateVariants(int $id): ResponseInterface

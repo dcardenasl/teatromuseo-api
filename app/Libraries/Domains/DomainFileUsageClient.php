@@ -22,18 +22,56 @@ final class DomainFileUsageClient implements DomainFileUsageClientInterface
     ) {
     }
 
+    /**
+     * @return list<array{source: string, resource: string, resource_id: int, label: string|null, role: string}>
+     */
     public function collectUsages(int $fileId): array
     {
+        /** @var list<array{source: string, resource: string, resource_id: int, label: string|null, role: string}> $usages */
+        $usages = [];
+        foreach ($this->collectUsageSnapshot($fileId)['usages'] as $row) {
+            $usages[] = [
+                'source' => (string) ($row['source'] ?? ''),
+                'resource' => (string) ($row['resource'] ?? ''),
+                'resource_id' => (int) ($row['resource_id'] ?? 0),
+                'label' => isset($row['label']) ? (string) $row['label'] : null,
+                'role' => (string) ($row['role'] ?? 'default'),
+            ];
+        }
+
+        return $usages;
+    }
+
+    /**
+     * Return one bounded result per configured domain. The Hub remains the
+     * authority for the internal HMAC call and keeps the context returned by
+     * a domain instead of forcing the BFF to query that domain a second time.
+     *
+     * @return array{
+     *     complete: bool,
+     *     sources: array<string, 'ok'|'unavailable'>,
+     *     usages: list<array<string, mixed>>
+     * }
+     */
+    public function collectUsageSnapshot(int $fileId): array
+    {
         if ($this->config->internalSecret === '' || $this->config->domains === []) {
-            return [];
+            return [
+                'complete' => false,
+                'sources' => [],
+                'usages' => [],
+            ];
         }
 
         $usages = [];
+        $sources = [];
         foreach ($this->config->domains as $code => $baseUrl) {
+            $sources[$code] = 'unavailable';
             try {
                 $response = $this->call('GET', $baseUrl, "/api/v1/internal/files/{$fileId}/usage");
                 $decoded = $this->decode($response);
                 $rows = is_array($decoded['data']['usages'] ?? null) ? $decoded['data']['usages'] : [];
+                $sources[$code] = 'ok';
                 foreach ($rows as $row) {
                     if (! is_array($row)) {
                         continue;
@@ -45,13 +83,20 @@ final class DomainFileUsageClient implements DomainFileUsageClientInterface
                         'label'       => isset($row['label']) ? (string) $row['label'] : null,
                         'role'        => isset($row['role']) ? (string) $row['role'] : 'default',
                     ];
+                    if (is_array($row['context'] ?? null)) {
+                        $usages[array_key_last($usages)]['context'] = $row['context'];
+                    }
                 }
             } catch (\Throwable $e) {
                 log_message('warning', "[DomainFileUsageClient] usage check failed for domain '{$code}' (file {$fileId}): " . $e->getMessage());
             }
         }
 
-        return $usages;
+        return [
+            'complete' => ! in_array('unavailable', $sources, true),
+            'sources' => $sources,
+            'usages' => $usages,
+        ];
     }
 
     public function broadcastInvalidate(int $fileId): void

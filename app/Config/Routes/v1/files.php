@@ -10,6 +10,7 @@ $routes->group('files', ['filter' => ['jwtauth', 'throttle']], function ($routes
         $routes->get('picker-manifest', '\App\Controllers\Api\V1\Files\FileController::pickerManifest');
         $routes->get('(:num)/info', '\App\Controllers\Api\V1\Files\FileController::info/$1');
         $routes->get('(:num)/usages', '\App\Controllers\Api\V1\Files\FileController::usages/$1');
+        $routes->get('(:num)/usage-snapshot', '\App\Controllers\Api\V1\Files\FileController::usageSnapshot/$1');
         $routes->get('(:num)', '\App\Controllers\Api\V1\Files\FileController::show/$1');
     });
 

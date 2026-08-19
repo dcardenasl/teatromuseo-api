@@ -124,6 +124,23 @@ class FileControllerTest extends ApiTestCase
         $this->assertIsArray($json['data']);
     }
 
+    public function testGetFileUsageSnapshotReturnsSourceHealthAndUsages(): void
+    {
+        \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));
+        $fileId = $this->createFile($this->currentUserId);
+
+        $result = $this->withHeaders(['Authorization' => "Bearer {$this->token}"])
+            ->get("/api/v1/files/{$fileId}/usage-snapshot");
+
+        $result->assertStatus(200);
+        $json = $this->getResponseJson($result);
+        $this->assertSame('success', $json['status']);
+        $this->assertArrayHasKey('complete', $json['data']);
+        $this->assertArrayHasKey('source', $json['data']);
+        $this->assertArrayHasKey('usages', $json['data']);
+        $this->assertIsArray($json['data']['usages']);
+    }
+
     public function testUpdateFileMetadataReturnsSuccess(): void
     {
         \dcardenasl\Ci4ApiCore\Http\ContextHolder::set(new \dcardenasl\Ci4ApiCore\Dto\SecurityContext($this->currentUserId, [], \App\Support\TestPermissionResolver::permissionsForRole((string) $this->currentUserRole)));

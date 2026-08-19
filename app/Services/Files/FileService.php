@@ -8,6 +8,7 @@ use App\DTO\Request\Files\UpdateFileMetadataRequestDTO;
 use App\DTO\Response\Files\FileDownloadResponseDTO;
 use App\DTO\Response\Files\FilePickerManifestResponseDTO;
 use App\DTO\Response\Files\FileResponseDTO;
+use App\DTO\Response\Files\FileUsageSnapshotResponseDTO;
 use App\Interfaces\Files\BinaryIngestionInterface;
 use App\Interfaces\Files\DomainFileUsageClientInterface;
 use App\Interfaces\Files\FilePolicyServiceInterface;
@@ -351,6 +352,41 @@ class FileService implements FileServiceInterface
         );
 
         return $this->collectAllUsages((int) $file->id);
+    }
+
+    /**
+     * Return one authoritative cross-domain usage snapshot for composed
+     * consumers. The file is authorized once, then Hub-owned references and
+     * the configured domain calls are collected without a second CMS read.
+     */
+    public function getUsageSnapshot(int $id, ?SecurityContext $context = null): FileUsageSnapshotResponseDTO
+    {
+        if ($context?->user_id === null) {
+            throw new AuthorizationException(lang('Api.unauthorized'));
+        }
+
+        $file = $this->findFileAndAuthorize(
+            $id,
+            $context->user_id,
+            FileAction::VIEW_USAGES,
+            $context
+        );
+
+        $domainSnapshot = $this->domainFileUsageClient->collectUsageSnapshot((int) $file->id);
+        $source = ['hub' => 'ok'] + ($domainSnapshot['sources'] ?? []);
+        $complete = ($domainSnapshot['complete'] ?? false) === true;
+
+        return FileUsageSnapshotResponseDTO::fromArray([
+            'complete' => $complete,
+            'source' => [
+                ...$source,
+                'state' => $complete ? 'ok' : 'partial',
+            ],
+            'usages' => array_merge(
+                $this->fileReferenceRepository->getByFileId((int) $file->id),
+                is_array($domainSnapshot['usages'] ?? null) ? $domainSnapshot['usages'] : [],
+            ),
+        ]);
     }
 
     /**

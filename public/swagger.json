@@ -2175,6 +2175,75 @@
                 ]
             }
         },
+        "/api/v1/files/{id}/usage-snapshot": {
+            "get": {
+                "tags": [
+                    "Files"
+                ],
+                "summary": "List file usages with source health",
+                "description": "Returns the Hub-owned and domain-owned usages in one source-aware snapshot. Domain context is preserved so composed clients do not repeat a domain query. A partial source set is never marked complete.",
+                "operationId": "e5759546d94e5a093dda9d6b1ae59be2",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usage snapshot",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "complete": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "source": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "usages": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "additionalProperties": true
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "404": {
+                        "description": "File not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/files/{id}/regenerate-variants": {
             "post": {
                 "tags": [

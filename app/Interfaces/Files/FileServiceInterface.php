@@ -65,6 +65,11 @@ interface FileServiceInterface
     public function getUsages(int $id, ?SecurityContext $context = null);
 
     /**
+     * Return one source-aware cross-domain usage snapshot for composed reads.
+     */
+    public function getUsageSnapshot(int $id, ?SecurityContext $context = null): \App\DTO\Response\Files\FileUsageSnapshotResponseDTO;
+
+    /**
      * Delete existing image variants and regenerate them from the stored original.
      *
      * @return array<string, array{path: string, url: string, width: int, height: int}>
