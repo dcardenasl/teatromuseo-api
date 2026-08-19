@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`GET /api/v1/files/{id}/usage-snapshot`** — new source-aware cross-domain
+  file usage read. Returns Hub-owned and domain-owned usages in one response,
+  with per-source health (`ok`/`unavailable`) and preserved domain context, so
+  composed clients no longer need a second CMS query to reconstruct the same
+  information.
 - **`cms-editor`/`cms-admin` permission bundles** — `cms-editor` now also grants
   `cms.collections.write`, `cms.forms.write`, `cms.submissions.write`, `cms.languages.read`,
   and `cms.file-translations.read/write`; `cms-admin` gained the remaining `write`/`admin`
