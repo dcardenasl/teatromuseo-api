@@ -6,6 +6,14 @@
 
 ## ✅ Completadas
 
+- [x] **CMS-EDITOR-01 — Bundle IAM editorial cross-app.** Cerrada 2026-08-18.
+  `cms-editor` ahora incluye edición de colecciones, formularios,
+  submissions y traducciones de archivos, además de `cms.languages.read`;
+  `cms-admin` quedó completo para esas operaciones. Los perfiles CMS se
+  componen automáticamente con `user` para conservar `self.access` y
+  `files.read/write`. Verificado con `composer quality` (787 tests, 2.270
+  asserts, 2 skips), `domain:sync-permissions` y `CmsRolesSeeder` local.
+
 - [x] **FILES-READ-01 — Biblioteca de medios compartida cross-owner** — cerrada
   2026-08-18. `FILE_USER_SCOPED_FILES=false` queda como la única configuración
   de scope para que `files.read` liste, consulte, descargue y use el picker con
@@ -25,8 +33,6 @@
   2026-08-12. Rotación por familias con detección de reutilización, revocación
   global inmediata mediante `auth_token_version`, caché negativo eliminado,
   auditoría crítica y regresiones completas.
-
-## 🔴 En progreso
 
 ## 🟡 Próximo
 
