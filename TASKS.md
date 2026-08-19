@@ -6,6 +6,12 @@
 
 ## ✅ Completadas
 
+- [x] **FILES-READ-02 — Snapshot de usos cross-domain.** Cerrada 2026-08-19.
+  El Hub expone `usage-snapshot` con una autorización de archivo, estado por
+  dominio y contexto CMS preservado; el BFF ya no repite la consulta CMS para
+  reconstruir la misma información. Verificado con endpoint, Swagger, PHPStan,
+  `composer quality` y la suite completa.
+
 - [x] **CMS-EDITOR-01 — Bundle IAM editorial cross-app.** Cerrada 2026-08-18.
   `cms-editor` ahora incluye edición de colecciones, formularios,
   submissions y traducciones de archivos, además de `cms.languages.read`;
