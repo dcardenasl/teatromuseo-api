@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`cms-editor`/`cms-admin` permission bundles** — `cms-editor` now also grants
+  `cms.collections.write`, `cms.forms.write`, `cms.submissions.write`, `cms.languages.read`,
+  and `cms.file-translations.read/write`; `cms-admin` gained the remaining `write`/`admin`
+  variants across languages, settings, forms, redirects, and file translations, plus
+  `cms.submissions.write`. Both roles are now complete for their respective editorial
+  audiences.
+
+### Fixed
+
+- **CMS role assignment silently dropped the base `user` role** — `UserRoleAssignmentService`
+  now composes any `cms-editor`/`cms-editor-structure`/`cms-admin` selection with the base
+  `user` role automatically, so `self.access` and `files.read/write` stay available to
+  editorial accounts instead of requiring the admin to select `user` explicitly alongside
+  the CMS profile.
+
 - **`RequestLogModel::getSlowRequests()`** — accepts an optional `$period` argument so the
   admin dashboard's slow-requests list can be scoped to the same time window as its request
   stats instead of scanning all-time data.
