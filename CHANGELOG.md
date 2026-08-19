@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LocalDriver` storage adapter** — now configures an explicit `PortableVisibilityConverter`
+  (files `0644`/`0600`, directories `0755`/`0700`, public by default) instead of relying on
+  Flysystem's implicit defaults, so directories created under the local storage root always
+  end up with predictable, group-readable permissions.
 - **CMS role assignment silently dropped the base `user` role** — `UserRoleAssignmentService`
   now composes any `cms-editor`/`cms-editor-structure`/`cms-admin` selection with the base
   `user` role automatically, so `self.access` and `files.read/write` stay available to
