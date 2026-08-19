@@ -55,4 +55,7 @@ ServerSignature Off
 	<FilesMatch "\.(?:avif|webp|png|jpe?g|gif|svg|ico|woff2?)$">
 		Header set Cache-Control "public, max-age=31536000, immutable"
 	</FilesMatch>
+	<FilesMatch "^(?:favicon\.(?:ico|svg)|favicon-[0-9]+x[0-9]+\.png|apple-touch-icon\.png|web-app-manifest-[0-9]+x[0-9]+\.png|site\.webmanifest)$">
+		Header set Cache-Control "public, max-age=86400"
+	</FilesMatch>
 </IfModule>
