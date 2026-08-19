@@ -10,7 +10,7 @@ use CodeIgniter\Database\Seeder;
 /**
  * Seeds two CMS roles that map to the two editorial audiences in the admin panel:
  *
- *   cms-editor — non-technical editors: manage entries, collections, taxonomy, and forms.
+ *   cms-editor — non-technical editors: manage entries, collections, taxonomy, forms, and submissions.
  *                Can use the wizard and the Contenido module group. No access to
  *                structural resources (pages, menus, block types, redirects).
  *
@@ -32,12 +32,18 @@ class CmsRolesSeeder extends Seeder
         'cms.entries.read',
         'cms.entries.write',
         'cms.collections.read',
+        'cms.collections.write',
         'cms.categories.read',
         'cms.categories.write',
         'cms.tags.read',
         'cms.tags.write',
         'cms.forms.read',
+        'cms.forms.write',
         'cms.submissions.read',
+        'cms.submissions.write',
+        'cms.languages.read',
+        'cms.file-translations.read',
+        'cms.file-translations.write',
     ];
 
     /** Admin: all editor permissions plus structural and configuration access */
@@ -63,12 +69,23 @@ class CmsRolesSeeder extends Seeder
         'cms.blocks.read',
         'cms.blocks.write',
         'cms.blocks.admin',
+        'cms.file-translations.read',
+        'cms.file-translations.write',
+        'cms.file-translations.admin',
         'cms.redirects.read',
         'cms.redirects.write',
+        'cms.redirects.admin',
         'cms.languages.read',
+        'cms.languages.write',
+        'cms.languages.admin',
         'cms.settings.read',
+        'cms.settings.write',
+        'cms.settings.admin',
         'cms.forms.read',
+        'cms.forms.write',
+        'cms.forms.admin',
         'cms.submissions.read',
+        'cms.submissions.write',
         'cms.analytics.read',
     ];
 
@@ -77,13 +94,13 @@ class CmsRolesSeeder extends Seeder
         'cms-editor' => [
             'code'        => 'cms-editor',
             'name'        => 'CMS Editor',
-            'description' => 'Day-to-day content editor: manages entries, collections, taxonomy and forms. Uses the Wizard and Contenido modules. No access to structural resources.',
+            'description' => 'Day-to-day content editor: manages entries, collections, taxonomy, forms and submission states. Uses the Wizard and Contenido modules. No access to structural resources.',
             'permissions' => self::EDITOR_PERMISSIONS,
         ],
         'cms-admin' => [
             'code'        => 'cms-admin',
             'name'        => 'CMS Administrator',
-            'description' => 'Full CMS access including pages, menus, block types, redirects, languages and settings.',
+            'description' => 'Full CMS access including pages, menus, block types, redirects, languages, settings, forms and submissions.',
             'permissions' => self::ADMIN_PERMISSIONS,
         ],
     ];
