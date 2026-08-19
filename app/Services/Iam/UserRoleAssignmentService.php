@@ -21,6 +21,19 @@ class UserRoleAssignmentService
 {
     private const DEFAULT_USER_ROLE_CODE = 'user';
 
+    /**
+     * CMS profiles are additive to the baseline user profile. The baseline
+     * owns self.access and the normal media capabilities (files.read/write),
+     * while the CMS role owns only cms.* permissions.
+     *
+     * @var list<string>
+     */
+    private const CMS_ROLE_CODES_REQUIRING_BASE_USER = [
+        'cms-editor',
+        'cms-editor-structure',
+        'cms-admin',
+    ];
+
     public function __construct(
         private readonly UserRoleModel $userRoleModel,
         private readonly RoleModel $roleModel,
@@ -58,6 +71,7 @@ class UserRoleAssignmentService
     public function syncRoles(int $userId, $roleIds, ?int $actorId = null): void
     {
         $roleIds = array_values(array_unique(array_map('intval', $roleIds)));
+        $roleIds = $this->ensureBaseUserRoleForCmsProfile($roleIds);
 
         if ($actorId !== null) {
             $this->assertActorCanGrantRoles($actorId, $roleIds);
@@ -82,6 +96,33 @@ class UserRoleAssignmentService
         }
 
         $this->effectivePermissions->invalidateAll();
+    }
+
+    /**
+     * Preserve the cross-application baseline when a CMS profile is selected
+     * explicitly in the Admin user editor. This keeps files.read/write and
+     * self.access outside the cms.* role while making the composition
+     * deterministic for create and update flows.
+     *
+     * @param list<int> $roleIds
+     * @return list<int>
+     */
+    private function ensureBaseUserRoleForCmsProfile(array $roleIds): array
+    {
+        $codes = $this->roleModel->findCodesByIds($roleIds);
+        foreach ($codes as $code) {
+            if (! in_array($code, self::CMS_ROLE_CODES_REQUIRING_BASE_USER, true)) {
+                continue;
+            }
+
+            $baseRoleId = $this->resolveRoleIdByCode(self::DEFAULT_USER_ROLE_CODE);
+            if (! in_array($baseRoleId, $roleIds, true)) {
+                $roleIds[] = $baseRoleId;
+            }
+            break;
+        }
+
+        return array_values(array_unique($roleIds));
     }
 
     public function removeRole(int $userId, int $roleId): void

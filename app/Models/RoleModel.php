@@ -77,6 +77,30 @@ class RoleModel extends BaseAuditableModel
         return $role !== null ? (int) $role->id : null;
     }
 
+    /**
+     * Resolve role codes for a list of IDs without exposing the Entity layer
+     * to role-assignment policy decisions.
+     *
+     * @param list<int> $roleIds
+     * @return array<int, string>
+     */
+    public function findCodesByIds(array $roleIds): array
+    {
+        if ($roleIds === []) {
+            return [];
+        }
+
+        /** @var list<RoleEntity> $roles */
+        $roles = $this->select('id, code')->whereIn('id', $roleIds)->findAll();
+
+        $codes = [];
+        foreach ($roles as $role) {
+            $codes[(int) $role->id] = (string) $role->code;
+        }
+
+        return $codes;
+    }
+
     public function existsById(int $id): bool
     {
         return $this->select('id')->find($id) !== null;
