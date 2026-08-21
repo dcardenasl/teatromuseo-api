@@ -31,6 +31,22 @@ esta es la única tabla involucrada.
   creación del usuario, grants y validación de red requiere acceso al entorno
   MySQL y credenciales de infraestructura.
 
+### Autorización editorial por recurso en CMS (2026-08-20) — ver `../docs/plan/2026-08-20-plan-autorizacion-editorial-por-recurso-cms-v2.md`
+
+- [ ] **CMS-ACCESS-03 — Permisos scoped + roles de referencia.** Registrar
+  `cms.pages.scoped-read/write`, `cms.entries.scoped-read/write`,
+  `cms.access.read/write` en el catálogo CMS vía `domain:sync-permissions`
+  (flujo normal de altas — no forma parte de la unificación de convenciones
+  pendiente en `CORE-06`, que es sobre nomenclatura entre dominios, no sobre
+  altas nuevas dentro de una convención ya conforme). Extender
+  `CmsRolesSeeder` con `cms-page-viewer`, `cms-page-editor`,
+  `cms-entry-viewer`, `cms-entry-editor` — perfiles nuevos, **sin tocar**
+  `cms-editor`/`cms-admin` (decisión explícita del plan, no un descuido:
+  §0). `cms.access.*` queda inicialmente solo en `cms-admin`. Depende de
+  `CMS-ACCESS-01` (filtro multi-código en `ci4-api-core`) solo para que las
+  rutas del CMS Domain puedan usarlos — el registro de permisos en el Hub no
+  depende de eso.
+
 ### Saneamiento arquitectónico heredado (prioridad 2)
 
 - [ ] **CFG-08** — Actualizar `ci4-api-scaffolding` y retirar el paso muerto
@@ -38,9 +54,17 @@ esta es la única tabla involucrada.
 - [ ] **CORE-02 residual** — Evaluar `AppExceptionHandler`, `AuditRepository`,
   `MetricModel`, `RequestLogModel`, `AuditLogModel` y el drift de migraciones de
   infraestructura; no asumir que `core:install` lo resuelve.
-- [ ] **CORE-06** — Unificar códigos de permisos con una migración explícita de
-  `permissions`/`role_permissions` y ventana de mantenimiento. No ejecutar solo
-  `domain:sync-permissions`.
+- [ ] **CORE-06** — Unificar **convenciones de nomenclatura** de permisos entre
+  los tres dominios (catalog usa `catalog.<camelCaseSingular>.<create|read|update|delete>`,
+  event usa `event.<kebab-plural>.<read|write|delete>`, cms usa
+  `cms.<plural>.<read|write|admin>` — ver `../docs/plan/2026-08-05-saneamiento-arquitectonico.md`
+  §CORE-06). Con migración explícita de `permissions`/`role_permissions` y
+  ventana de mantenimiento porque toca roles ya asignados. No ejecutar solo
+  `domain:sync-permissions`. **No bloquea altas nuevas dentro de una
+  convención ya conforme** — cms ya es la convención objetivo; los códigos
+  scoped del plan de autorización editorial
+  (`../docs/plan/2026-08-20-plan-autorizacion-editorial-por-recurso-cms-v2.md`)
+  no son parte de lo que CORE-06 tiene que renombrar.
 - [ ] **MIG-02** — Revisar las cadenas de migraciones de membresías/roles cuyo
   neto es cero y decidir si se consolidan o se documentan.
 - [ ] **MIG-03** — Sacar `UsersLoadTestSeeder` del directorio de seeds de
