@@ -83,4 +83,72 @@ class RefreshTokenModelTest extends IntegrationTestCase
         $result = $this->model->where('user_id', $this->testUserId)->findAll();
         $this->assertEmpty($result);
     }
+
+    public function testGetActiveTokenReturnsUnexpiredUnrevokedToken(): void
+    {
+        $rawToken = bin2hex(random_bytes(32));
+        $this->model->insert([
+            'user_id' => $this->testUserId,
+            'token' => \dcardenasl\Ci4ApiCore\Security\Hasher::token($rawToken),
+            'family_id' => bin2hex(random_bytes(16)),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
+        ]);
+
+        $result = $this->model->getActiveToken($rawToken);
+
+        $this->assertNotNull($result);
+        $this->assertSame($this->testUserId, (int) $result->user_id);
+    }
+
+    public function testGetActiveTokenReturnsNullForExpiredToken(): void
+    {
+        $rawToken = bin2hex(random_bytes(32));
+        $this->model->insert([
+            'user_id' => $this->testUserId,
+            'token' => \dcardenasl\Ci4ApiCore\Security\Hasher::token($rawToken),
+            'family_id' => bin2hex(random_bytes(16)),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
+        ]);
+
+        $this->assertNull($this->model->getActiveToken($rawToken));
+    }
+
+    public function testGetActiveTokenReturnsNullForRevokedToken(): void
+    {
+        $rawToken = bin2hex(random_bytes(32));
+        $this->model->insert([
+            'user_id' => $this->testUserId,
+            'token' => \dcardenasl\Ci4ApiCore\Security\Hasher::token($rawToken),
+            'family_id' => bin2hex(random_bytes(16)),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
+            'revoked_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->assertNull($this->model->getActiveToken($rawToken));
+    }
+
+    public function testDeleteExpiredRemovesOnlyExpiredTokens(): void
+    {
+        $expiredToken = bin2hex(random_bytes(32));
+        $activeToken = bin2hex(random_bytes(32));
+
+        $this->model->insert([
+            'user_id' => $this->testUserId,
+            'token' => \dcardenasl\Ci4ApiCore\Security\Hasher::token($expiredToken),
+            'family_id' => bin2hex(random_bytes(16)),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
+        ]);
+        $this->model->insert([
+            'user_id' => $this->testUserId,
+            'token' => \dcardenasl\Ci4ApiCore\Security\Hasher::token($activeToken),
+            'family_id' => bin2hex(random_bytes(16)),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+7 days')),
+        ]);
+
+        $deleted = $this->model->deleteExpired();
+
+        $this->assertGreaterThanOrEqual(1, $deleted);
+        $this->assertNull($this->model->getActiveToken($expiredToken) ?? null);
+        $this->assertNotNull($this->model->where('token', \dcardenasl\Ci4ApiCore\Security\Hasher::token($activeToken))->first());
+    }
 }

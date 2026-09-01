@@ -88,4 +88,92 @@ final class SecurityAuditLoggerTest extends CIUnitTestCase
 
         $logger->logApiKeyRateLimitExceeded($apiKey, '10.1.1.1', null, 'ip');
     }
+
+    public function testLogAuthorizationDeniedFromRequestWritesExpectedEvent(): void
+    {
+        $mockAudit = $this->createMock(AuditServiceInterface::class);
+        $logger = new SecurityAuditLogger($mockAudit, new RequestAuditContextFactory());
+
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getHeaderLine')->willReturn('');
+        $request->method('getIPAddress')->willReturn('192.168.1.20');
+
+        $mockAudit->expects($this->once())
+            ->method('log')
+            ->with(
+                'authorization_denied_permission',
+                'authorization',
+                null,
+                [],
+                $this->callback(static fn (array $payload): bool => $payload['required'] === 'users.write' && $payload['actor_context'] === 'user:5'),
+                $this->isInstanceOf(SecurityContext::class),
+                'denied',
+                'critical'
+            );
+
+        $logger->logAuthorizationDeniedFromRequest($request, 'users.write', 'user:5', 5);
+    }
+
+    public function testLogAuthorizationDeniedFromRequestUsesCustomAction(): void
+    {
+        $mockAudit = $this->createMock(AuditServiceInterface::class);
+        $logger = new SecurityAuditLogger($mockAudit, new RequestAuditContextFactory());
+
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getHeaderLine')->willReturn('');
+        $request->method('getIPAddress')->willReturn('192.168.1.21');
+
+        $mockAudit->expects($this->once())
+            ->method('log')
+            ->with(
+                'custom_denied_action',
+                'authorization',
+                null,
+                [],
+                $this->anything(),
+                $this->isInstanceOf(SecurityContext::class),
+                'denied',
+                'critical'
+            );
+
+        $logger->logAuthorizationDeniedFromRequest($request, 'iam.admin-access', null, null, 'custom_denied_action');
+    }
+
+    public function testLogRevokedTokenReuseWritesExpectedEvent(): void
+    {
+        $mockAudit = $this->createMock(AuditServiceInterface::class);
+        $logger = new SecurityAuditLogger($mockAudit, new RequestAuditContextFactory());
+
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getHeaderLine')->willReturn('');
+        $request->method('getIPAddress')->willReturn('192.168.1.22');
+
+        $mockAudit->expects($this->once())
+            ->method('log')
+            ->with(
+                'revoked_token_reuse_detected',
+                'tokens',
+                null,
+                [],
+                ['jti' => 'jti-123'],
+                $this->isInstanceOf(SecurityContext::class),
+                'denied',
+                'critical'
+            );
+
+        $logger->logRevokedTokenReuse($request, 7, 'user:7', 'jti-123');
+    }
+
+    public function testSafeLogSwallowsAuditServiceExceptions(): void
+    {
+        $mockAudit = $this->createMock(AuditServiceInterface::class);
+        $mockAudit->method('log')->willThrowException(new \RuntimeException('audit backend down'));
+        $logger = new SecurityAuditLogger($mockAudit, new RequestAuditContextFactory());
+
+        $context = new SecurityContext(1);
+
+        // Must not propagate — audit logging is intentionally non-blocking.
+        $logger->logAuthorizationDeniedFromContext('some_action', [], $context);
+        $this->addToAssertionCount(1);
+    }
 }
