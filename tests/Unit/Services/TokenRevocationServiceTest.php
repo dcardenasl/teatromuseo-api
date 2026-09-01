@@ -251,23 +251,9 @@ class TokenRevocationServiceTest extends CIUnitTestCase
 
     // ==================== REVOKE ALL USER TOKENS TESTS ====================
 
-    public function testRevokeAllUserTokensCallsModel(): void
-    {
-        $userId = 123;
-
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('revokeAllUserTokens')
-            ->with($userId, \App\Enums\RefreshTokenRevocationReason::RevokeAll);
-
-        $this->mockTokenVersionService
-            ->expects($this->once())
-            ->method('increment')
-            ->with($userId)
-            ->willReturn(1);
-
-        $result = $this->service->revokeAllUserTokens($userId);
-
-        $this->assertTrue($result);
-    }
+    // testRevokeAllUserTokensCallsModel moved to
+    // tests/Integration/Services/TokenRevocationServiceTest.php: revokeAllUserTokens()
+    // is wrapped in HandlesTransactions::wrapInTransaction(), which connects to a
+    // real database via Config\Database::connect() regardless of mocked model
+    // dependencies, so it cannot run as a true DB-free unit test.
 }

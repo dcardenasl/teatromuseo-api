@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\DTO\Request\Identity\RefreshTokenRequestDTO;
-use App\Entities\UserEntity;
 use App\Enums\RefreshTokenRevocationReason;
 use App\Interfaces\Tokens\JwtServiceInterface;
 use App\Models\RefreshTokenModel;
@@ -104,103 +103,12 @@ class RefreshTokenServiceTest extends CIUnitTestCase
 
     // ==================== REVOKE TESTS ====================
 
-    public function testRefreshRotatesWithinTheExistingFamily(): void
-    {
-        $familyId = str_repeat('a', 32);
-        $record = (object) [
-            'id' => 12,
-            'user_id' => 1,
-            'family_id' => $familyId,
-            'expires_at' => date('Y-m-d H:i:s', time() + 3600),
-            'revoked_at' => null,
-            'revoked_reason' => null,
-        ];
-        $user = new UserEntity([
-            'id' => 1,
-            'email' => 'refresh@example.com',
-            'status' => 'active',
-            'auth_token_version' => 3,
-        ]);
-
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('findForUpdate')
-            ->with(self::VALID_REFRESH_TOKEN)
-            ->willReturn($record);
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('revokeToken')
-            ->with(self::VALID_REFRESH_TOKEN, RefreshTokenRevocationReason::Rotated)
-            ->willReturn(true);
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('insert')
-            ->with($this->callback(static function (array $data) use ($familyId): bool {
-                return $data['user_id'] === 1
-                    && $data['family_id'] === $familyId
-                    && $data['parent_id'] === 12;
-            }))
-            ->willReturn(13);
-        $this->mockUserModel->method('find')->willReturn($user);
-        $this->mockPermissionsResolver->method('resolveAll')->willReturn([]);
-        $this->mockJwtService->method('encode')->willReturn('new-access-token');
-
-        $result = $this->service->refreshAccessToken(new RefreshTokenRequestDTO([
-            'refresh_token' => self::VALID_REFRESH_TOKEN,
-        ], service('validation')));
-
-        $this->assertSame('new-access-token', $result->access_token);
-        $this->assertSame(64, strlen($result->refresh_token));
-    }
-
-    public function testReusingRotatedRefreshTokenRevokesAllSessionsAndInvalidatesAccessTokens(): void
-    {
-        $familyId = str_repeat('b', 32);
-        $record = (object) [
-            'id' => 21,
-            'user_id' => 7,
-            'family_id' => $familyId,
-            'expires_at' => date('Y-m-d H:i:s', time() + 3600),
-            'revoked_at' => date('Y-m-d H:i:s'),
-            'revoked_reason' => RefreshTokenRevocationReason::Rotated->value,
-        ];
-
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('findForUpdate')
-            ->with(self::VALID_REFRESH_TOKEN)
-            ->willReturn($record);
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('revokeAllUserTokens')
-            ->with(7, RefreshTokenRevocationReason::ReuseDetected);
-        $this->mockTokenVersionService
-            ->expects($this->once())
-            ->method('increment')
-            ->with(7)
-            ->willReturn(4);
-        $this->mockAuditService
-            ->expects($this->once())
-            ->method('log')
-            ->with(
-                'revoked_token_reuse_detected',
-                'tokens',
-                7,
-                [],
-                $this->callback(static function (array $data) use ($familyId): bool {
-                    return $data['user_id'] === 7 && $data['family_id'] === $familyId;
-                }),
-                null,
-                'denied',
-                'critical'
-            );
-
-        $this->expectException(\dcardenasl\Ci4ApiCore\Exceptions\AuthenticationException::class);
-
-        $this->service->refreshAccessToken(new RefreshTokenRequestDTO([
-            'refresh_token' => self::VALID_REFRESH_TOKEN,
-        ], service('validation')));
-    }
+    // testRefreshRotatesWithinTheExistingFamily and
+    // testReusingRotatedRefreshTokenRevokesAllSessionsAndInvalidatesAccessTokens
+    // moved to tests/Integration/Services/RefreshTokenServiceTest.php:
+    // refreshAccessToken() is wrapped in HandlesTransactions::wrapInTransaction(),
+    // which connects to a real database via Config\Database::connect() regardless
+    // of mocked model dependencies, so it cannot run as a true DB-free unit test.
 
     public function testRevokeWithValidTokenReturnsSuccess(): void
     {
@@ -232,21 +140,8 @@ class RefreshTokenServiceTest extends CIUnitTestCase
 
     // ==================== REVOKE ALL USER TOKENS TESTS ====================
 
-    public function testRevokeAllUserTokensCallsModel(): void
-    {
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('revokeAllUserTokens')
-            ->with(1, RefreshTokenRevocationReason::RevokeAll);
-
-        $this->mockTokenVersionService
-            ->expects($this->once())
-            ->method('increment')
-            ->with(1)
-            ->willReturn(1);
-
-        $result = $this->service->revokeAllUserTokens(1);
-
-        $this->assertSame(\dcardenasl\Ci4ApiCore\Support\OperationState::SUCCESS, $result->state);
-    }
+    // testRevokeAllUserTokensCallsModel moved to
+    // tests/Integration/Services/RefreshTokenServiceTest.php: revokeAllUserTokens()
+    // is wrapped in HandlesTransactions::wrapInTransaction(), which connects to a
+    // real database regardless of mocked model dependencies.
 }
