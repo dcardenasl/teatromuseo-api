@@ -77,6 +77,16 @@ class JwtServiceTest extends CIUnitTestCase
         $this->assertNotEmpty($decoded->jti);
     }
 
+    public function testEncodeIncludesSessionVersionForImmediateInvalidation(): void
+    {
+        $token = $this->service->encode(1, [], 7);
+
+        $decoded = $this->service->decode($token);
+
+        $this->assertNotNull($decoded);
+        $this->assertSame(7, $decoded->token_version);
+    }
+
     public function testEncodeGeneratesUniqueJtiPerToken(): void
     {
         $token1 = $this->service->encode(1);

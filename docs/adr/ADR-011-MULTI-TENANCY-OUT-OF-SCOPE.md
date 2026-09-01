@@ -20,7 +20,9 @@ Specifically:
 - `permissions.application_id` scopes permission codes per application, not per tenant.
 - `BaseAuditableModel` has no tenant column; queries do not filter by tenant.
 - Audit log entries do not record tenant context.
-- File uploads default to a per-user scope (`FILES_USER_SCOPED=true`); they have no tenant scope at all.
+- File uploads are shared across the single tenant by default
+  (`FILE_USER_SCOPED_FILES=false`); deployments that need per-user media can
+  set it to `true`. This is a file-library policy, not a tenant scope.
 
 If a project needs multi-tenancy, the supported path is to **fork** the kit (or generate a project from it via `new-project.sh`) and add a tenant column where appropriate. We do not promise a non-breaking upgrade path back from a tenanted fork.
 

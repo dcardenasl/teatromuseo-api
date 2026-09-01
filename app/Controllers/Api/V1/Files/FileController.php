@@ -50,6 +50,16 @@ class FileController extends ApiController
     }
 
     /**
+     * Return the lightweight file manifest used by the admin picker.
+     */
+    public function pickerManifest(): ResponseInterface
+    {
+        return $this->handleRequest(
+            fn ($dto, $context) => $this->fileService->pickerManifest($context)
+        );
+    }
+
+    /**
      * Upload a new file
      */
     public function upload(): ResponseInterface
@@ -69,7 +79,7 @@ class FileController extends ApiController
 
             // For local storage, send file for direct download
             if ($result->storage_driver === 'local') {
-                $filePath = FCPATH . config('Api')->fileUploadPath . $result->path;
+                $filePath = ROOTPATH . config('Api')->fileUploadPath . $result->path;
 
                 if (file_exists($filePath)) {
                     $download = $this->response->download($filePath, null);
@@ -101,6 +111,16 @@ class FileController extends ApiController
     {
         return $this->handleRequest(
             fn ($dto, $context) => $this->fileService->getUsages($id, $context)
+        );
+    }
+
+    /**
+     * Return the source-aware usage snapshot used by composed Admin reads.
+     */
+    public function usageSnapshot(int $id): ResponseInterface
+    {
+        return $this->handleRequest(
+            fn ($dto, $context) => $this->fileService->getUsageSnapshot($id, $context)
         );
     }
 

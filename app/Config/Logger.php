@@ -10,6 +10,20 @@ use CodeIgniter\Log\Handlers\HandlerInterface;
 
 class Logger extends BaseConfig
 {
+    /** @var array<string, int> */
+    private const LEVEL_THRESHOLDS = [
+        'off' => 0,
+        'emergency' => 1,
+        'alert' => 2,
+        'critical' => 3,
+        'error' => 4,
+        'warning' => 5,
+        'notice' => 6,
+        'info' => 7,
+        'debug' => 9,
+        'all' => 9,
+    ];
+
     /**
      * --------------------------------------------------------------------------
      * Error Logging Threshold
@@ -42,6 +56,16 @@ class Logger extends BaseConfig
      * @var int|list<int>
      */
     public $threshold = (ENVIRONMENT === 'production') ? 4 : 9;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $configuredLevel = strtolower(trim((string) env('LOG_LEVEL', '')));
+        if (isset(self::LEVEL_THRESHOLDS[$configuredLevel])) {
+            $this->threshold = self::LEVEL_THRESHOLDS[$configuredLevel];
+        }
+    }
 
     /**
      * --------------------------------------------------------------------------

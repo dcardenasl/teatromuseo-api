@@ -41,7 +41,14 @@ class LocalDriver implements StorageDriverInterface
             @chmod($this->basePath, 0775);
         }
 
-        $adapter = new LocalFilesystemAdapter($this->basePath);
+        $visibilityConverter = new \League\Flysystem\UnixVisibility\PortableVisibilityConverter(
+            0644,
+            0600,
+            0755,
+            0700,
+            \League\Flysystem\Visibility::PUBLIC
+        );
+        $adapter = new LocalFilesystemAdapter($this->basePath, $visibilityConverter);
         $this->filesystem = new Filesystem($adapter);
     }
 

@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controllers\Api\V1\Internal;
 
-use App\Models\FileModel;
 use CodeIgniter\HTTP\ResponseInterface;
+use Config\Services;
+use dcardenasl\Ci4ApiCore\Exceptions\BadRequestException;
 use dcardenasl\Ci4ApiCore\Http\ApiController;
 
 /**
@@ -19,7 +20,7 @@ class InternalFileMetaController extends ApiController
 {
     protected function resolveDefaultService(): object
     {
-        return model(FileModel::class);
+        return Services::fileService();
     }
 
     /**
@@ -35,53 +36,20 @@ class InternalFileMetaController extends ApiController
         return $this->handleRequest(function (): mixed {
             $raw = $this->request->getVar('ids');
             $ids = is_array($raw) ? $raw : (is_string($raw) ? explode(',', $raw) : []);
-
-            $ids = array_values(array_unique(array_filter(
-                array_map('intval', $ids),
-                static fn (int $id): bool => $id > 0
+            $ids = array_values(array_unique(array_map(
+                static fn (mixed $id): int => (int) $id,
+                array_filter($ids, static fn (mixed $id): bool => is_numeric($id) && (int) $id > 0),
             )));
 
-            if (empty($ids)) {
-                return (object) [];
+            if (count($ids) > 200) {
+                throw new BadRequestException(lang('Files.max_batch_ids'), [
+                    'ids' => [lang('Files.max_batch_ids_hint')],
+                ]);
             }
 
-            $ids = array_slice($ids, 0, 200);
-
-            /** @var FileModel $model */
-            $model = model(FileModel::class);
-            $rows  = $model
-                ->select('id, url, variants')
-                ->whereIn('id', $ids)
-                ->where('deleted_at IS NULL')
-                ->asArray()
-                ->findAll();
-
-            $result = [];
-            foreach ($rows as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $idRaw  = $row['id'] ?? 0;
-                $fileId = is_scalar($idRaw) ? (int) $idRaw : 0;
-                if ($fileId <= 0) {
-                    continue;
-                }
-
-                $raw      = $row['variants'] ?? null;
-                $variants = null;
-                if (is_string($raw) && $raw !== '') {
-                    $decoded  = json_decode($raw, true);
-                    $variants = is_array($decoded) ? $decoded : null;
-                }
-
-                $urlRaw = $row['url'] ?? null;
-                $url    = is_scalar($urlRaw) ? (string) $urlRaw : null;
-
-                $result[$fileId] = [
-                    'id'       => $fileId,
-                    'url'      => $url,
-                    'variants' => $variants ?? [],
-                ];
+            $result = Services::fileService()->resolvePublicMetaBatch($ids);
+            if (empty($result)) {
+                return (object) [];
             }
 
             return $result;

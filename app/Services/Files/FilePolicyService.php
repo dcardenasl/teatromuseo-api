@@ -7,6 +7,7 @@ namespace App\Services\Files;
 use App\DTO\Request\Files\FileUploadRequestDTO;
 use App\Entities\FileEntity;
 use App\Interfaces\Files\FilePolicyServiceInterface;
+use App\Support\Files\FileAction;
 use Config\FilePolicy;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 
@@ -38,11 +39,7 @@ class FilePolicyService implements FilePolicyServiceInterface
 
     public function canListAllFiles(?SecurityContext $context = null): bool
     {
-        if (! $this->policy->userScopedFiles) {
-            return true;
-        }
-
-        return $context?->hasPermission('files.read') === true;
+        return $this->canRead($context);
     }
 
     public function shouldScopeListingsToOwner(?SecurityContext $context = null): bool
@@ -52,27 +49,45 @@ class FilePolicyService implements FilePolicyServiceInterface
 
     public function canBypassOwnershipForRead(?SecurityContext $context = null): bool
     {
-        if (! $this->policy->userScopedFiles) {
-            return true;
+        if ($context?->hasPermission('files.read') !== true) {
+            return false;
         }
 
-        return $this->policy->allowPrivilegedReadBypass && $context?->hasPermission('files.read') === true;
+        return ! $this->policy->userScopedFiles || $this->policy->allowPrivilegedReadBypass;
     }
 
-    public function canAccessFile(FileEntity $file, int $userId, string $action, ?SecurityContext $context = null): bool
+    public function canRead(?SecurityContext $context = null): bool
     {
-        if (! $this->policy->userScopedFiles && in_array($action, ['download', 'view'], true)) {
-            return true;
+        return $context?->hasPermission('files.read') === true;
+    }
+
+    public function canUpload(?SecurityContext $context = null): bool
+    {
+        return $context?->hasPermission('files.write') === true
+            || $context?->hasPermission('files.admin') === true;
+    }
+
+    public function canAccessFile(FileEntity $file, int $userId, FileAction $action, ?SecurityContext $context = null): bool
+    {
+        if ($action->isRead()) {
+            if (! $this->canRead($context)) {
+                return false;
+            }
+
+            return (int) $file->user_id === $userId
+                || $this->canBypassOwnershipForRead($context);
+        }
+
+        if ($action === FileAction::FORCE_DELETE) {
+            return (int) $file->user_id === $userId
+                ? $this->canUpload($context)
+                : $context?->hasPermission('files.admin') === true;
         }
 
         if ((int) $file->user_id === $userId) {
-            return true;
+            return $this->canUpload($context);
         }
 
-        if (in_array($action, ['download', 'view'], true) && $this->canBypassOwnershipForRead($context)) {
-            return true;
-        }
-
-        return false;
+        return $context?->hasPermission('files.admin') === true;
     }
 }

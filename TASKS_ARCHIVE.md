@@ -1,7 +1,54 @@
 # TASKS_ARCHIVE — ci4-api-starter
 
 > Historial de tareas completadas. Movido desde TASKS.md para mantener el tracker activo liviano.
-> Última actualización: 2026-05-26
+> Última actualización: 2026-08-20
+
+---
+
+## ✅ Cierres 2026-08-11..19 — archivados 2026-08-20
+
+### FILES-READ-02 — Snapshot de usos cross-domain
+
+Cerrada 2026-08-19. El Hub expone `usage-snapshot` con una autorización de
+archivo, estado por dominio y contexto CMS preservado; el BFF ya no repite la
+consulta CMS para reconstruir la misma información. Verificado con endpoint,
+Swagger, PHPStan, `composer quality` y la suite completa.
+
+### CMS-EDITOR-01 — Bundle IAM editorial cross-app
+
+Cerrada 2026-08-18. `cms-editor` ahora incluye edición de colecciones,
+formularios, submissions y traducciones de archivos, además de
+`cms.languages.read`; `cms-admin` quedó completo para esas operaciones. Los
+perfiles CMS se componen automáticamente con `user` para conservar
+`self.access` y `files.read/write`. Verificado con `composer quality` (787
+tests, 2.270 asserts, 2 skips), `domain:sync-permissions` y `CmsRolesSeeder`
+local.
+
+### FILES-READ-01 — Biblioteca de medios compartida cross-owner
+
+Cerrada 2026-08-18. `FILE_USER_SCOPED_FILES=false` queda como la única
+configuración de scope para que `files.read` liste, consulte, descargue y use
+el picker con archivos de cualquier usuario. Se añadieron regresiones de
+lectura cross-owner sin abrir `files.write`/`files.admin` para mutaciones;
+quality verde.
+
+### SEC-01 — Control de acceso en gestión de archivos
+
+Cerrada 2026-08-12. Se eliminó el bypass de ownership por booleano, se
+centralizó la política por acción, se añadió `files.admin`, filtros de ruta,
+migración idempotente y regresiones cross-owner; `composer quality` quedó
+verde.
+
+### SEC-02 — Ciclo de vida de tokens (hallazgo 1.4)
+
+Cerrada 2026-08-12. Rotación por familias con detección de reutilización,
+revocación global inmediata mediante `auth_token_version`, caché negativo
+eliminado, auditoría crítica y regresiones completas.
+
+### ADM-DASH-01 — Resumen agregado del dashboard administrativo
+
+Cerrada 2026-08-11. Lectura autenticada y permission-aware para datos
+propiedad del Hub, con contrato, permisos y pruebas de regresión.
 
 ---
 
@@ -88,3 +135,15 @@
 
 La orquestación Docker cross-repo permanece abierta como **API-012** en el tracker activo; no se
 considera cerrada por el hecho de que el entrypoint ya sea idempotente.
+
+---
+
+## ✅ Saneamiento 2026-08-05..07 — cierres reconciliados
+
+Se archivaron las tareas cerradas que seguían visibles en `TASKS.md`: `CFG-02`,
+`CFG-05`, `DOC-01`, `DATA-01`, `LAYER-02`, `LAYER-03` y `LAYER-04`, junto con
+los cierres de migración/higiene verificados en la auditoría cross-repo. Los
+residuos explícitos (`CFG-08`, `CORE-02`, `CORE-06`, `MIG-02/03`, `DEAD-02` y
+`API-012`) permanecen activos.
+
+La evidencia completa está en [`../docs/plan/2026-08-05-saneamiento-arquitectonico.md`](../docs/plan/2026-08-05-saneamiento-arquitectonico.md).

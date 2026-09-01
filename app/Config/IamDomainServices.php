@@ -6,6 +6,15 @@ namespace Config;
 
 trait IamDomainServices
 {
+    public static function roleWorkspaceService(bool $getShared = true): \App\Services\Iam\RoleWorkspaceService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('roleWorkspaceService');
+        }
+
+        return new \App\Services\Iam\RoleWorkspaceService(model(\App\Models\RoleModel::class));
+    }
+
     public static function roleResponseMapper(bool $getShared = true): \dcardenasl\Ci4ApiCore\Mappers\ResponseMapperInterface
     {
         if ($getShared) {
@@ -29,7 +38,8 @@ trait IamDomainServices
             static::iamAuthorizationService(),
             static::rolePermissionAssignmentService(),
             static::validation(),
-            \Config\Database::connect()
+            model(\App\Models\RolePermissionModel::class),
+            model(\App\Models\PermissionModel::class)
         );
     }
 
@@ -40,7 +50,9 @@ trait IamDomainServices
         }
 
         return new \App\Services\Iam\RolePermissionAssignmentService(
-            \Config\Database::connect(),
+            model(\App\Models\RolePermissionModel::class),
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\PermissionModel::class),
             static::iamAuthorizationService(),
             static::effectivePermissionsResolver()
         );
@@ -103,7 +115,8 @@ trait IamDomainServices
         }
 
         return new \App\Services\Iam\EffectivePermissionsResolver(
-            \Config\Database::connect(),
+            model(\App\Models\UserRoleModel::class),
+            model(\App\Models\PermissionModel::class),
             static::cache()
         );
     }
@@ -115,7 +128,7 @@ trait IamDomainServices
         }
 
         return new \App\Services\Iam\ApplicationPermissionsResolver(
-            \Config\Database::connect(),
+            model(\App\Models\PermissionModel::class),
             static::cache()
         );
     }
@@ -127,7 +140,9 @@ trait IamDomainServices
         }
 
         return new \App\Services\Iam\UserRoleAssignmentService(
-            \Config\Database::connect(),
+            model(\App\Models\UserRoleModel::class),
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\RolePermissionModel::class),
             static::effectivePermissionsResolver()
         );
     }
@@ -141,7 +156,9 @@ trait IamDomainServices
         return new \App\Services\Iam\IamAuthorizationService(
             static::effectivePermissionsResolver(),
             static::securityAuditLogger(),
-            \Config\Database::connect()
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\PermissionModel::class),
+            model(\App\Models\RolePermissionModel::class)
         );
     }
 
@@ -152,7 +169,8 @@ trait IamDomainServices
         }
 
         return new \App\Services\Iam\AssignableRolesService(
-            \Config\Database::connect()
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\RolePermissionModel::class)
         );
     }
 
@@ -164,7 +182,8 @@ trait IamDomainServices
 
         return new \App\Services\Iam\UserPermissionsService(
             static::effectivePermissionsResolver(),
-            \Config\Database::connect()
+            model(\App\Models\UserModel::class),
+            model(\App\Models\ApplicationModel::class)
         );
     }
 
@@ -174,6 +193,23 @@ trait IamDomainServices
             return static::getSharedInstance('rolePermissionMatrixService');
         }
 
-        return new \App\Services\Iam\RolePermissionMatrixService(\Config\Database::connect());
+        return new \App\Services\Iam\RolePermissionMatrixService(
+            model(\App\Models\ApplicationModel::class),
+            model(\App\Models\PermissionModel::class),
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\RolePermissionModel::class)
+        );
+    }
+
+    public static function selfPermissionService(bool $getShared = true): \App\Libraries\Iam\SelfPermissionService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('selfPermissionService');
+        }
+
+        return new \App\Libraries\Iam\SelfPermissionService(
+            model(\App\Models\PermissionModel::class),
+            model(\App\Models\ApplicationModel::class)
+        );
     }
 }

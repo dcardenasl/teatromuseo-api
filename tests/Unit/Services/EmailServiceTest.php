@@ -286,4 +286,47 @@ class EmailServiceTest extends CIUnitTestCase
 
         $this->assertEquals(1001, $jobId);
     }
+
+    public function testSendTemplateAppliesAndRestoresRequestedLocale(): void
+    {
+        // The view doesn't exist so this still ends up on the exception path,
+        // but applyLocale()/currentLocale() must run before that happens —
+        // exercising the locale-switch branch this test targets.
+        $result = $this->service->sendTemplate(
+            'missing_template',
+            'juan@example.com',
+            ['subject' => 'Hola', 'locale' => 'es']
+        );
+
+        $this->assertFalse($result);
+    }
+
+    // ==================== NULL-DEPENDENCY FALLBACK TESTS ====================
+
+    public function testSendWithoutMailerReturnsTrue(): void
+    {
+        $service = new EmailService(null, $this->mockQueueManager);
+
+        $result = $service->send('test@example.com', 'Subject', 'Message');
+
+        $this->assertTrue($result);
+    }
+
+    public function testQueueWithoutQueueManagerReturnsZero(): void
+    {
+        $service = new EmailService($this->mockMailer, null);
+
+        $result = $service->queue('test@example.com', 'Subject', 'Message');
+
+        $this->assertSame(0, $result);
+    }
+
+    public function testQueueTemplateWithoutQueueManagerReturnsZero(): void
+    {
+        $service = new EmailService($this->mockMailer, null);
+
+        $result = $service->queueTemplate('welcome', 'test@example.com', []);
+
+        $this->assertSame(0, $result);
+    }
 }

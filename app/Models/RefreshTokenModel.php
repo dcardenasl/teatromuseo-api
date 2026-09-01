@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\RefreshTokenRevocationReason;
 use dcardenasl\Ci4ApiCore\Security\Hasher;
 
 /**
@@ -23,8 +24,11 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     protected $allowedFields = [
         'user_id',
         'token',
+        'family_id',
+        'parent_id',
         'expires_at',
         'revoked_at',
+        'revoked_reason',
         'created_at',
     ];
 
@@ -36,6 +40,7 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     protected $validationRules = [
         'user_id' => 'required|integer',
         'token' => 'required|max_length[255]|is_unique[refresh_tokens.token]',
+        'family_id' => 'required|exact_length[32]',
         'expires_at' => 'required|valid_date',
     ];
 
@@ -65,8 +70,10 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
      * @param string $token
      * @return bool Returns true if token exists, false if token doesn't exist
      */
-    public function revokeToken(string $token): bool
-    {
+    public function revokeToken(
+        string $token,
+        RefreshTokenRevocationReason $reason = RefreshTokenRevocationReason::Logout
+    ): bool {
         $tokenHash = Hasher::token($token);
         // Check if token exists first
         $tokenExists = $this->where('token', $tokenHash)->countAllResults(false) > 0;
@@ -78,7 +85,10 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
         // Update only non-revoked tokens, but return true since token exists
         $this->where('token', $tokenHash)
             ->where('revoked_at', null)
-            ->set(['revoked_at' => date('Y-m-d H:i:s')])
+            ->set([
+                'revoked_at' => date('Y-m-d H:i:s'),
+                'revoked_reason' => $reason->value,
+            ])
             ->update();
 
         return true;
@@ -90,11 +100,16 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
      * @param int $userId
      * @return bool
      */
-    public function revokeAllUserTokens(int $userId): bool
-    {
+    public function revokeAllUserTokens(
+        int $userId,
+        RefreshTokenRevocationReason $reason = RefreshTokenRevocationReason::RevokeAll
+    ): bool {
         $this->where('user_id', $userId)
             ->where('revoked_at', null)
-            ->set(['revoked_at' => date('Y-m-d H:i:s')])
+            ->set([
+                'revoked_at' => date('Y-m-d H:i:s'),
+                'revoked_reason' => $reason->value,
+            ])
             ->update();
 
         return $this->db->affectedRows() > 0;
@@ -103,14 +118,16 @@ class RefreshTokenModel extends \dcardenasl\Ci4ApiCore\Models\BaseAuditableModel
     /**
      * Get active refresh token with row-level lock (FOR UPDATE)
      */
-    public function findActiveForUpdate(string $token): ?object
+    public function findForUpdate(string $token): ?object
     {
         $tokenHash = Hasher::token($token);
         $sql = $this->where('token', $tokenHash)
-            ->where('expires_at >', date('Y-m-d H:i:s'))
-            ->where('revoked_at', null)
             ->builder()
-            ->getCompiledSelect() . ' FOR UPDATE';
+            ->getCompiledSelect();
+
+        if (strtolower((string) $this->db->DBDriver) !== 'sqlite3') {
+            $sql .= ' FOR UPDATE';
+        }
 
         $result = $this->db->query($sql);
 

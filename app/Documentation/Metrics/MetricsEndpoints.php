@@ -36,6 +36,35 @@ use OpenApi\Attributes as OA;
     ]
 )]
 #[OA\Get(
+    path: '/api/v1/metrics/workspace',
+    tags: ['Metrics'],
+    summary: 'Get the summary and timeseries metrics workspace',
+    security: [['bearerAuth' => []]],
+    parameters: [
+        new OA\Parameter(
+            name: 'period',
+            in: 'query',
+            required: false,
+            schema: new OA\Schema(type: 'string', enum: ['1h', '24h', '7d', '30d'], example: '24h')
+        ),
+    ],
+    responses: [
+        new OA\Response(
+            response: 200,
+            description: 'Metrics workspace containing summary and time-series data for the selected period.',
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'status', type: 'string', example: 'success'),
+                    new OA\Property(property: 'data', type: 'object', additionalProperties: true),
+                ],
+                type: 'object'
+            )
+        ),
+        new OA\Response(response: 401, ref: '#/components/responses/UnauthorizedResponse'),
+        new OA\Response(response: 503, description: 'Metrics disabled'),
+    ]
+)]
+#[OA\Get(
     path: '/api/v1/metrics/requests',
     tags: ['Metrics'],
     summary: 'Get request statistics',

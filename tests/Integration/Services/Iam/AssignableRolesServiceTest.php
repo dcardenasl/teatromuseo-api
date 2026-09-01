@@ -42,7 +42,10 @@ final class AssignableRolesServiceTest extends ApiTestCase
         $db->table('user_roles')->emptyTable();
         $db->table('roles')->emptyTable();
 
-        $this->service = new AssignableRolesService($db);
+        $this->service = new AssignableRolesService(
+            model(\App\Models\RoleModel::class),
+            model(\App\Models\RolePermissionModel::class)
+        );
     }
 
     public function testReturnsEmptyArrayWhenNoRolesExist(): void

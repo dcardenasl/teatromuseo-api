@@ -16,6 +16,17 @@ use Symfony\Component\Mailer\Transport;
  */
 trait SystemMonitoringServices
 {
+    public static function dashboardSummaryService(bool $getShared = true): \App\Services\Admin\DashboardSummaryService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('dashboardSummaryService');
+        }
+
+        return new \App\Services\Admin\DashboardSummaryService(
+            static::dashboardSummaryRepository()
+        );
+    }
+
     public static function emailService(bool $getShared = true): \App\Interfaces\System\EmailServiceInterface
     {
         if ($getShared) {

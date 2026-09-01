@@ -74,7 +74,9 @@ class ApiSmokeTest extends BaseCommand
         $userId = (int) $row['user_id'];
         $jwtService = Services::jwtService();
         $permissions = Services::effectivePermissionsResolver()->resolveAll($userId);
-        return $jwtService->encode($userId, $permissions);
+        $tokenVersion = Services::tokenVersionService()->current($userId);
+
+        return $jwtService->encode($userId, $permissions, $tokenVersion);
     }
 
     private function inspectEndpoint(string $method, string $path, string $label, string $token): void

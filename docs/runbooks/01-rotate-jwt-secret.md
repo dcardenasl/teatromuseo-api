@@ -89,5 +89,5 @@ If Step 4 reveals the new secret is wrong (typo, encoding issue):
 - [ ] Identify how the secret leaked (logs / screenshot / chat / repo).
 - [ ] If repo-leaked: rewrite git history (`git filter-repo`) or rotate again on the assumption that the leaked value is in someone's clone.
 - [ ] Audit `audit_logs` for any `auth.login` events that look anomalous in the leak window.
-- [ ] Consider whether refresh tokens issued during the leak window need to be revoked (`token_revocations` table).
+- [ ] Consider whether refresh tokens issued during the leak window need to be revoked (`refresh_tokens` table), and whether individual access JTIs need to be added to `token_blacklist`.
 - [ ] Update `.env.example` placeholder if the leak revealed a misleading default.

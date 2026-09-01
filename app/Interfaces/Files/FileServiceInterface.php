@@ -24,6 +24,11 @@ interface FileServiceInterface
     public function index(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
 
     /**
+     * Return the lightweight read model used by the admin file picker.
+     */
+    public function pickerManifest(?SecurityContext $context = null): \App\DTO\Response\Files\FilePickerManifestResponseDTO;
+
+    /**
      * Download a file
      */
     public function download(\dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface;
@@ -58,6 +63,11 @@ interface FileServiceInterface
      * @return array<array{resource: string, resource_id: int, label: string|null, role: string}>
      */
     public function getUsages(int $id, ?SecurityContext $context = null);
+
+    /**
+     * Return one source-aware cross-domain usage snapshot for composed reads.
+     */
+    public function getUsageSnapshot(int $id, ?SecurityContext $context = null): \App\DTO\Response\Files\FileUsageSnapshotResponseDTO;
 
     /**
      * Delete existing image variants and regenerate them from the stored original.
@@ -98,4 +108,14 @@ interface FileServiceInterface
      * @return list<array{id:int, ok:bool, error?:string}>
      */
     public function bulkForceDestroy($ids, ?SecurityContext $context = null);
+
+    /**
+     * Batch-resolve public metadata (id, url, variants) for a set of file
+     * IDs, for internal M2M consumption by trusted Domain apps. Resolves
+     * relative storage paths to absolute URLs via StorageManager.
+     *
+     * @param array<int|string, mixed> $ids
+     * @return array<int, array{id: int, url: string|null, variants: array<string, mixed>}>
+     */
+    public function resolvePublicMetaBatch(array $ids): array;
 }

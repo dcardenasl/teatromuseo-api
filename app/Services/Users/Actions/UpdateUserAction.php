@@ -94,26 +94,21 @@ class UpdateUserAction
     }
 
     /**
+     * $request->toArray() already carries email/first_name/last_name/
+     * avatar_url with correct explicit-null-clears semantics (see
+     * UserUpdateRequestDTO::map()'s docblock). password is deliberately
+     * excluded from toArray() and handled here directly: a null password
+     * (whether omitted or explicitly sent) is never persisted — only a
+     * non-null value is hashed and written.
+     *
      * @return array<string, mixed>
      */
     private function buildUpdateData(UserUpdateRequestDTO $request): array
     {
-        $data = [];
+        $data = $request->toArray();
 
-        if ($request->email !== null) {
-            $data['email'] = $request->email;
-        }
-        if ($request->first_name !== null) {
-            $data['first_name'] = $request->first_name;
-        }
-        if ($request->last_name !== null) {
-            $data['last_name'] = $request->last_name;
-        }
         if ($request->password !== null) {
             $data['password'] = password_hash($request->password, PASSWORD_BCRYPT);
-        }
-        if ($request->avatar_url !== null) {
-            $data['avatar_url'] = $request->avatar_url;
         }
 
         return $data;

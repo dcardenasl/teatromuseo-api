@@ -56,31 +56,60 @@ readonly class UserUpdateRequestDTO extends BaseRequestDTO
         ];
     }
 
+    /** @var array<string, mixed> */
+    private array $mappedFields;
+
+    /**
+     * email is NOT NULL and never clearable. first_name/last_name/
+     * avatar_url are nullable columns — an explicit null preserves through
+     * to toArray() and actually clears them (e.g. removing a user's
+     * avatar) — the bug this fixes is array_filter() silently dropping
+     * every null, which made that impossible. password is deliberately
+     * EXCLUDED from toArray()/mappedFields entirely, same as before: it is
+     * never persisted here at all — UpdateUserAction reads
+     * $request->password directly and only ever writes a freshly-hashed
+     * value when non-null. There is no "clear password to null" operation
+     * on this endpoint, and there must never be one — that would either
+     * leave the account without any usable credential or silently disable
+     * password login, and any legitimate reset belongs in a dedicated
+     * reset-password flow, not an implicit side effect of this DTO's
+     * general null-clearing semantics.
+     */
     protected function map(array $data): void
     {
-        $this->email      = isset($data['email']) ? strtolower(trim((string) $data['email'])) : null;
-        $this->first_name = $data['first_name'] ?? null;
-        $this->last_name  = $data['last_name'] ?? null;
+        $this->email      = array_key_exists('email', $data) && $data['email'] !== null ? strtolower(trim((string) $data['email'])) : null;
+        $this->first_name = array_key_exists('first_name', $data) && $data['first_name'] !== null && $data['first_name'] !== '' ? (string) $data['first_name'] : null;
+        $this->last_name  = array_key_exists('last_name', $data) && $data['last_name'] !== null && $data['last_name'] !== '' ? (string) $data['last_name'] : null;
         $this->password   = $data['password'] ?? null;
-        $this->avatar_url = $data['avatar_url'] ?? null;
+        $this->avatar_url = array_key_exists('avatar_url', $data) && $data['avatar_url'] !== null && $data['avatar_url'] !== '' ? (string) $data['avatar_url'] : null;
         $this->role_ids   = array_key_exists('role_ids', $data) ? self::normalizeRoleIds($data['role_ids']) : null;
-    }
 
-    public function toArray(): array
-    {
-        $base = array_filter([
-            'email'      => $this->email,
-            'first_name' => $this->first_name,
-            'last_name'  => $this->last_name,
-            'password'   => $this->password,
-            'avatar_url' => $this->avatar_url,
-        ], fn ($v) => $v !== null);
-
-        if ($this->role_ids !== null) {
-            $base['role_ids'] = $this->role_ids;
+        $mappedFields = [];
+        if ($this->email !== null) {
+            $mappedFields['email'] = $this->email;
+        }
+        if (array_key_exists('first_name', $data)) {
+            $mappedFields['first_name'] = $this->first_name;
+        }
+        if (array_key_exists('last_name', $data)) {
+            $mappedFields['last_name'] = $this->last_name;
+        }
+        if (array_key_exists('avatar_url', $data)) {
+            $mappedFields['avatar_url'] = $this->avatar_url;
         }
 
-        return $base;
+        $this->mappedFields = $mappedFields;
+    }
+
+    /**
+     * Deliberately excludes password and role_ids — see the note on
+     * map() above. Callers that need those read $this->password /
+     * $this->role_ids directly (UpdateUserAction::buildUpdateData() does
+     * exactly this).
+     */
+    public function toArray(): array
+    {
+        return $this->mappedFields;
     }
 
     /**

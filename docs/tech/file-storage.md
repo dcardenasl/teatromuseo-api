@@ -22,13 +22,16 @@ Environment Variables:
 - `FILE_ALLOWED_TYPES`: Comma-separated extensions (e.g., `jpg,png,pdf`).
 - `FILE_DEFAULT_VISIBILITY`: Default visibility stored with uploads when a caller does not provide one.
 - `FILE_ALLOWED_VISIBILITY`: Comma-separated allow-list for accepted visibility values.
-- `FILE_USER_SCOPED_FILES`: `false` exposes all files to authenticated users; `true` restores owner scoping.
+- `FILE_USER_SCOPED_FILES`: canonical read-scope switch. `false` exposes all files to authenticated readers; `true` restores owner scoping.
 - `FILE_ALLOW_PRIVILEGED_READ_BYPASS`: only relevant when `FILE_USER_SCOPED_FILES=true`. Defaults to
   `true` — a caller holding `files.read` can view/download files they don't own, bypassing the
   per-user scoping. This is intentional for a CMS where staff routinely need to read files uploaded
   by other users (see `FilePolicyService::canBypassOwnershipForRead()`), not an oversight. Set to
   `false` if a deployment needs strict per-owner isolation even for privileged roles.
 - `FILE_ALLOW_PUBLIC_VISIBILITY`: `true` allows trusted callers to persist public uploads.
+
+`FILE_DEFAULT_VISIBILITY` is upload metadata only; it does not grant or deny
+read access.
 
 Validation:
 All file operations use DTO-based validation. The processors ensure that files are structurally sound and safe before the `FileService` attempts persistence.
@@ -99,8 +102,19 @@ stringifies. Tracked as `SEÑAL-API-001` in `TASKS.md`.
 
 ### Authorization
 
-`FileService::destroy()`, `restore()`, and `forceDestroy()` all run through
-`findFileAndAuthorize()` (or its trashed-aware sibling `findTrashedFileAndAuthorize()`),
-which enforces ownership unless the caller carries the `files.read` permission
-(treated as the "files admin" bypass). Denied attempts are written to the audit log
-with action codes `unauthorized_file_{delete,restore,force_delete}`.
+Authorization is action-based and centralized in `FilePolicyService`; there is no
+caller-supplied ownership-bypass flag.
+
+- `files.read` permits read actions (`view`, `download`, and `view_usages`). When
+  `FILE_ALLOW_PRIVILEGED_READ_BYPASS=true`, it may bypass ownership for those
+  read actions only.
+- `files.write` permits uploads and mutations of files owned by the caller.
+- `files.admin` permits mutations of files owned by any user.
+- `force-delete` follows the same owner/write or cross-owner/admin policy, while
+  the route still requires `files.write` as a coarse permission gate.
+
+`delete`, `restore`, `replace`, `update_metadata`, and `regenerate_variants`
+never treat `files.read` as a write or ownership bypass. Denied attempts are
+written to the audit log with action-specific codes such as
+`unauthorized_file_delete`, `unauthorized_file_replace`, and
+`unauthorized_file_update_metadata`.

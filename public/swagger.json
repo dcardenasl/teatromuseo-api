@@ -1573,6 +1573,61 @@
                 ]
             }
         },
+        "/api/v1/files/picker-manifest": {
+            "get": {
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Return the lightweight file picker manifest",
+                "description": "Returns all visible file metadata and direct thumbnail URLs. Pagination is performed by the client; binary content is never included.",
+                "operationId": "61e4613936bc791ae95daec8a0b6fa82",
+                "responses": {
+                    "200": {
+                        "description": "File picker manifest",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "items": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "example": 1704
+                                                },
+                                                "version": {
+                                                    "type": "string",
+                                                    "example": "1"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/files/upload": {
             "post": {
                 "tags": [
@@ -2099,6 +2154,75 @@
                                                 },
                                                 "type": "object"
                                             }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "404": {
+                        "description": "File not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/files/{id}/usage-snapshot": {
+            "get": {
+                "tags": [
+                    "Files"
+                ],
+                "summary": "List file usages with source health",
+                "description": "Returns the Hub-owned and domain-owned usages in one source-aware snapshot. Domain context is preserved so composed clients do not repeat a domain query. A partial source set is never marked complete.",
+                "operationId": "e5759546d94e5a093dda9d6b1ae59be2",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usage snapshot",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "complete": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "source": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "usages": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "additionalProperties": true
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
                                         }
                                     },
                                     "type": "object"
@@ -2659,6 +2783,48 @@
                 }
             }
         },
+        "/api/v1/iam/roles/{id}/workspace": {
+            "get": {
+                "tags": [
+                    "Iam"
+                ],
+                "summary": "Get the role editor workspace",
+                "operationId": "3bc1f60c9fc613eb6c2add668ea37ca2",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Role workspace",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RoleWorkspaceResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/roles": {
             "get": {
                 "tags": [
@@ -2921,6 +3087,65 @@
                                         },
                                         "data": {
                                             "$ref": "#/components/schemas/MetricsOverview"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/UnauthorizedResponse"
+                    },
+                    "503": {
+                        "description": "Metrics disabled"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/metrics/workspace": {
+            "get": {
+                "tags": [
+                    "Metrics"
+                ],
+                "summary": "Get the summary and timeseries metrics workspace",
+                "operationId": "2482aa40cad393fd1cd98d6aaef24353",
+                "parameters": [
+                    {
+                        "name": "period",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": "24h",
+                            "enum": [
+                                "1h",
+                                "24h",
+                                "7d",
+                                "30d"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Metrics workspace containing summary and time-series data for the selected period.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
                                         }
                                     },
                                     "type": "object"
@@ -5045,6 +5270,28 @@
                         "type": "string",
                         "example": "2026-02-26 12:00:00",
                         "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "RoleWorkspaceResponse": {
+                "title": "Role workspace response",
+                "properties": {
+                    "role": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "allPermissions": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PermissionResponse"
+                        }
+                    },
+                    "assignedPermissionIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
                     }
                 },
                 "type": "object"

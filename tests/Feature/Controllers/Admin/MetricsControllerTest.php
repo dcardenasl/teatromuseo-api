@@ -43,6 +43,7 @@ class MetricsControllerTest extends ApiTestCase
             '/api/v1/metrics/requests',
             '/api/v1/metrics/slow-requests',
             '/api/v1/metrics/timeseries',
+            '/api/v1/metrics/workspace',
             '/api/v1/metrics/custom/example',
         ];
 

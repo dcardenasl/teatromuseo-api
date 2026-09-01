@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Iam;
 
-use CodeIgniter\Database\ConnectionInterface;
+use App\Models\RoleModel;
+use App\Models\RolePermissionModel;
+use App\Models\UserRoleModel;
 use dcardenasl\Ci4ApiCore\Exceptions\AuthorizationException;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
 
@@ -20,10 +22,22 @@ class UserRoleAssignmentService
     private const DEFAULT_USER_ROLE_CODE = 'user';
 
     /**
-     * @param ConnectionInterface<object, object> $db
+     * CMS profiles are additive to the baseline user profile. The baseline
+     * owns self.access and the normal media capabilities (files.read/write),
+     * while the CMS role owns only cms.* permissions.
+     *
+     * @var list<string>
      */
+    private const CMS_ROLE_CODES_REQUIRING_BASE_USER = [
+        'cms-editor',
+        'cms-editor-structure',
+        'cms-admin',
+    ];
+
     public function __construct(
-        private readonly ConnectionInterface $db,
+        private readonly UserRoleModel $userRoleModel,
+        private readonly RoleModel $roleModel,
+        private readonly RolePermissionModel $rolePermissionModel,
         private readonly EffectivePermissionsResolver $effectivePermissions
     ) {
     }
@@ -33,21 +47,11 @@ class UserRoleAssignmentService
      */
     public function assignRole(int $userId, int $roleId, ?int $assignedBy = null): void
     {
-        $exists = $this->db->table('user_roles')
-            ->where('user_id', $userId)
-            ->where('role_id', $roleId)
-            ->countAllResults() > 0;
-
-        if ($exists) {
+        if ($this->userRoleModel->pairExists($userId, $roleId)) {
             return;
         }
 
-        $this->db->table('user_roles')->insert([
-            'user_id'             => $userId,
-            'role_id'             => $roleId,
-            'assigned_at'         => date('Y-m-d H:i:s'),
-            'assigned_by_user_id' => $assignedBy,
-        ]);
+        $this->userRoleModel->assign($userId, $roleId, $assignedBy);
 
         $this->effectivePermissions->invalidateAll();
     }
@@ -67,53 +71,65 @@ class UserRoleAssignmentService
     public function syncRoles(int $userId, $roleIds, ?int $actorId = null): void
     {
         $roleIds = array_values(array_unique(array_map('intval', $roleIds)));
+        $roleIds = $this->ensureBaseUserRoleForCmsProfile($roleIds);
 
         if ($actorId !== null) {
             $this->assertActorCanGrantRoles($actorId, $roleIds);
         }
 
-        $current = $this->getRoleIds($userId);
+        $current = $this->userRoleModel->getRoleIdsForUser($userId);
 
-        $toAdd    = array_diff($roleIds, $current);
-        $toRemove = array_diff($current, $roleIds);
+        $toAdd    = array_values(array_diff($roleIds, $current));
+        $toRemove = array_values(array_diff($current, $roleIds));
 
         if ($toAdd !== []) {
-            $now = date('Y-m-d H:i:s');
-            $rows = [];
-            foreach ($toAdd as $roleId) {
-                $rows[] = [
-                    'user_id'             => $userId,
-                    'role_id'             => (int) $roleId,
-                    'assigned_at'         => $now,
-                    'assigned_by_user_id' => $actorId,
-                ];
-            }
-            $this->db->table('user_roles')->insertBatch($rows);
+            $this->userRoleModel->assignMany($userId, $toAdd, $actorId);
         }
 
         if ($toRemove !== []) {
-            $this->db->table('user_roles')
-                ->where('user_id', $userId)
-                ->whereIn('role_id', array_map('intval', $toRemove))
-                ->delete();
+            $this->userRoleModel->removeMany($userId, $toRemove);
         }
 
         // Never leave a user with zero roles — re-assign default 'user'.
-        if ($this->getRoleIds($userId) === []) {
+        if ($this->userRoleModel->getRoleIdsForUser($userId) === []) {
             $this->assignRoleByCode($userId, self::DEFAULT_USER_ROLE_CODE, $actorId);
         }
 
         $this->effectivePermissions->invalidateAll();
     }
 
+    /**
+     * Preserve the cross-application baseline when a CMS profile is selected
+     * explicitly in the Admin user editor. This keeps files.read/write and
+     * self.access outside the cms.* role while making the composition
+     * deterministic for create and update flows.
+     *
+     * @param list<int> $roleIds
+     * @return list<int>
+     */
+    private function ensureBaseUserRoleForCmsProfile(array $roleIds): array
+    {
+        $codes = $this->roleModel->findCodesByIds($roleIds);
+        foreach ($codes as $code) {
+            if (! in_array($code, self::CMS_ROLE_CODES_REQUIRING_BASE_USER, true)) {
+                continue;
+            }
+
+            $baseRoleId = $this->resolveRoleIdByCode(self::DEFAULT_USER_ROLE_CODE);
+            if (! in_array($baseRoleId, $roleIds, true)) {
+                $roleIds[] = $baseRoleId;
+            }
+            break;
+        }
+
+        return array_values(array_unique($roleIds));
+    }
+
     public function removeRole(int $userId, int $roleId): void
     {
-        $this->db->table('user_roles')
-            ->where('user_id', $userId)
-            ->where('role_id', $roleId)
-            ->delete();
+        $this->userRoleModel->remove($userId, $roleId);
 
-        if ($this->getRoleIds($userId) === []) {
+        if ($this->userRoleModel->getRoleIdsForUser($userId) === []) {
             $this->assignRoleByCode($userId, self::DEFAULT_USER_ROLE_CODE);
         }
 
@@ -125,63 +141,22 @@ class UserRoleAssignmentService
      */
     public function getUserRoles(int $userId)
     {
-        $result = $this->db->table('user_roles ur')
-            ->select('r.id, r.code, r.name, r.description, r.is_system')
-            ->join('roles r', 'r.id = ur.role_id')
-            ->where('ur.user_id', $userId)
-            ->orderBy('r.name', 'ASC')
-            ->get();
-
-        $rows = $result !== false ? $result->getResultArray() : [];
-
-        return array_values(array_map(static fn (array $r) => [
-            'id'          => (int) $r['id'],
-            'code'        => (string) $r['code'],
-            'name'        => (string) $r['name'],
-            'description' => $r['description'] !== null ? (string) $r['description'] : null,
-            'is_system'   => (int) $r['is_system'],
-        ], $rows));
+        return $this->userRoleModel->getRolesForUser($userId);
     }
 
     public function isSuperadmin(int $userId): bool
     {
-        $result = $this->db->table('user_roles ur')
-            ->select('1', false)
-            ->join('role_permissions rp', 'rp.role_id = ur.role_id')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->where('ur.user_id', $userId)
-            ->where('p.code', 'iam.superadmin-access')
-            ->limit(1)
-            ->get();
-
-        $row = $result !== false ? $result->getRowArray() : null;
-
-        return $row !== null;
-    }
-
-    /**
-     * @return list<int>
-     */
-    private function getRoleIds(int $userId): array
-    {
-        $result = $this->db->table('user_roles')
-            ->select('role_id')
-            ->where('user_id', $userId)
-            ->get();
-
-        $rows = $result !== false ? $result->getResultArray() : [];
-
-        return array_values(array_map(static fn (array $r) => (int) $r['role_id'], $rows));
+        return $this->userRoleModel->userHasPermissionCode($userId, 'iam.superadmin-access');
     }
 
     private function resolveRoleIdByCode(string $code): int
     {
-        $result = $this->db->table('roles')->where('code', $code)->limit(1)->get();
-        $row    = $result !== false ? $result->getRowArray() : null;
-        if ($row === null) {
+        $roleId = $this->roleModel->findIdByCode($code);
+        if ($roleId === null) {
             throw new NotFoundException(sprintf('Role with code "%s" not found.', $code));
         }
-        return (int) $row['id'];
+
+        return $roleId;
     }
 
     /**
@@ -196,23 +171,12 @@ class UserRoleAssignmentService
             return;
         }
 
-        $actorPermissionCodes = $this->getUserPermissionCodes($actorId);
-
-        $rpcResult           = $this->db->table('role_permissions rp')
-            ->select('rp.role_id, p.code')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->whereIn('rp.role_id', $roleIds)
-            ->get();
-        $rolePermissionCodes = $rpcResult !== false ? $rpcResult->getResultArray() : [];
-
-        $byRole = [];
-        foreach ($rolePermissionCodes as $row) {
-            $byRole[(int) $row['role_id']][] = (string) $row['code'];
-        }
+        $actorPermissionCodes = $this->userRoleModel->getPermissionCodesForUser($actorId);
+        $byRole               = $this->rolePermissionModel->getPermissionCodesByRoleIds($roleIds);
 
         foreach ($roleIds as $roleId) {
             $codes = $byRole[$roleId] ?? [];
-            $diff = array_diff($codes, $actorPermissionCodes);
+            $diff  = array_diff($codes, $actorPermissionCodes);
             if ($diff !== []) {
                 throw new AuthorizationException(sprintf(
                     'You cannot assign a role that includes permissions you do not own: %s',
@@ -220,23 +184,5 @@ class UserRoleAssignmentService
                 ));
             }
         }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function getUserPermissionCodes(int $userId): array
-    {
-        $result = $this->db->table('user_roles ur')
-            ->select('p.code')
-            ->distinct()
-            ->join('role_permissions rp', 'rp.role_id = ur.role_id')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->where('ur.user_id', $userId)
-            ->get();
-
-        $rows = $result !== false ? $result->getResultArray() : [];
-
-        return array_values(array_unique(array_map(static fn (array $r) => (string) $r['code'], $rows)));
     }
 }

@@ -14,6 +14,7 @@ use dcardenasl\Ci4ApiCore\Dto\BaseRequestDTO;
 readonly class GoogleLoginRequestDTO extends BaseRequestDTO
 {
     public string $id_token;
+    public ?string $locale;
 
     public function rules(): array
     {
@@ -25,12 +26,20 @@ readonly class GoogleLoginRequestDTO extends BaseRequestDTO
     protected function map(array $data): void
     {
         $this->id_token = (string) ($data['id_token'] ?? '');
+        $locale = isset($data['locale']) ? strtolower(trim((string) $data['locale'])) : '';
+        $this->locale = $locale !== '' ? $locale : null;
     }
 
     public function toArray(): array
     {
-        return [
+        $payload = [
             'id_token' => $this->id_token,
         ];
+
+        if ($this->locale !== null) {
+            $payload['locale'] = $this->locale;
+        }
+
+        return $payload;
     }
 }

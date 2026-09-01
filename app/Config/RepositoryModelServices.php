@@ -6,6 +6,19 @@ namespace Config;
 
 trait RepositoryModelServices
 {
+    public static function dashboardSummaryRepository(bool $getShared = true): \App\Interfaces\Admin\DashboardSummaryRepositoryInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('dashboardSummaryRepository');
+        }
+
+        return new \App\Repositories\Admin\DashboardSummaryRepository(
+            static::userModel(),
+            new \App\Models\FileModel(),
+            new \App\Models\RequestLogModel(),
+        );
+    }
+
     public static function userRepository(bool $getShared = true): \App\Interfaces\Users\UserRepositoryInterface
     {
         if ($getShared) {

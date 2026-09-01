@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\DTO\Request\Identity\RefreshTokenRequestDTO;
+use App\Enums\RefreshTokenRevocationReason;
 use App\Interfaces\Tokens\JwtServiceInterface;
 use App\Models\RefreshTokenModel;
 use App\Models\UserModel;
 use App\Services\Tokens\RefreshTokenService;
 use CodeIgniter\Test\CIUnitTestCase;
+use dcardenasl\Ci4ApiCore\Services\AuditServiceInterface;
 use Tests\Support\Traits\CustomAssertionsTrait;
 
 /**
@@ -30,6 +32,8 @@ class RefreshTokenServiceTest extends CIUnitTestCase
     protected UserModel $mockUserModel;
     protected \App\Services\Users\UserAccountGuard $mockUserAccountGuard;
     protected \App\Services\Iam\EffectivePermissionsResolver $mockPermissionsResolver;
+    protected AuditServiceInterface $mockAuditService;
+    protected \App\Interfaces\Tokens\TokenVersionServiceInterface $mockTokenVersionService;
 
     protected function setUp(): void
     {
@@ -43,13 +47,17 @@ class RefreshTokenServiceTest extends CIUnitTestCase
 
         $this->mockUserAccountGuard = $this->createMock(\App\Services\Users\UserAccountGuard::class);
         $this->mockPermissionsResolver = $this->createMock(\App\Services\Iam\EffectivePermissionsResolver::class);
+        $this->mockAuditService = $this->createMock(AuditServiceInterface::class);
+        $this->mockTokenVersionService = $this->createMock(\App\Interfaces\Tokens\TokenVersionServiceInterface::class);
 
         $this->service = new RefreshTokenService(
             $this->mockRefreshTokenModel,
             $this->mockJwtService,
             $this->mockUserModel,
             $this->mockUserAccountGuard,
-            $this->mockPermissionsResolver
+            $this->mockPermissionsResolver,
+            $this->mockAuditService,
+            $this->mockTokenVersionService
         );
     }
 
@@ -95,12 +103,19 @@ class RefreshTokenServiceTest extends CIUnitTestCase
 
     // ==================== REVOKE TESTS ====================
 
+    // testRefreshRotatesWithinTheExistingFamily and
+    // testReusingRotatedRefreshTokenRevokesAllSessionsAndInvalidatesAccessTokens
+    // moved to tests/Integration/Services/RefreshTokenServiceTest.php:
+    // refreshAccessToken() is wrapped in HandlesTransactions::wrapInTransaction(),
+    // which connects to a real database via Config\Database::connect() regardless
+    // of mocked model dependencies, so it cannot run as a true DB-free unit test.
+
     public function testRevokeWithValidTokenReturnsSuccess(): void
     {
         $this->mockRefreshTokenModel
             ->expects($this->once())
             ->method('revokeToken')
-            ->with(self::VALID_REFRESH_TOKEN)
+            ->with(self::VALID_REFRESH_TOKEN, RefreshTokenRevocationReason::Logout)
             ->willReturn(true);
 
         $result = $this->service->revoke(new RefreshTokenRequestDTO([
@@ -125,15 +140,8 @@ class RefreshTokenServiceTest extends CIUnitTestCase
 
     // ==================== REVOKE ALL USER TOKENS TESTS ====================
 
-    public function testRevokeAllUserTokensCallsModel(): void
-    {
-        $this->mockRefreshTokenModel
-            ->expects($this->once())
-            ->method('revokeAllUserTokens')
-            ->with(1);
-
-        $result = $this->service->revokeAllUserTokens(1);
-
-        $this->assertSame(\dcardenasl\Ci4ApiCore\Support\OperationState::SUCCESS, $result->state);
-    }
+    // testRevokeAllUserTokensCallsModel moved to
+    // tests/Integration/Services/RefreshTokenServiceTest.php: revokeAllUserTokens()
+    // is wrapped in HandlesTransactions::wrapInTransaction(), which connects to a
+    // real database regardless of mocked model dependencies.
 }

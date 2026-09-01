@@ -29,6 +29,7 @@ class FileServiceTest extends CIUnitTestCase
     protected FileService $service;
     protected FileRepositoryInterface $mockFileRepository;
     protected \App\Interfaces\Files\FileReferenceRepositoryInterface $mockFileReferenceRepository;
+    protected \App\Interfaces\Files\DomainFileUsageClientInterface $mockDomainFileUsageClient;
     protected StorageManager $mockStorage;
     protected \App\Libraries\Files\StorageKeyGenerator $mockStorageKeyGenerator;
     protected AuditServiceInterface $mockAuditService;
@@ -57,6 +58,8 @@ class FileServiceTest extends CIUnitTestCase
         $this->mockAuditService = $this->createMock(AuditServiceInterface::class);
         $this->mockFilePolicy = $this->createMock(\App\Interfaces\Files\FilePolicyServiceInterface::class);
         $this->mockFilePolicy->method('resolveUploadVisibility')->willReturn('private');
+        $this->mockFilePolicy->method('canRead')->willReturn(true);
+        $this->mockFilePolicy->method('canUpload')->willReturn(true);
         $this->mockFilePolicy->method('shouldScopeListingsToOwner')->willReturn(true);
         $this->mockFilePolicy->method('canBypassOwnershipForRead')->willReturn(false);
         $this->mockFilePolicy->method('canAccessFile')->willReturnCallback(
@@ -74,6 +77,8 @@ class FileServiceTest extends CIUnitTestCase
         $this->mockVirusScanner = $this->createMock(\App\Interfaces\Files\VirusScannerServiceInterface::class);
         $this->mockVirusScanner->method('isSafe')->willReturnCallback(fn (): bool => $this->virusScannerResult);
         $this->mockFileReferenceRepository = $this->createMock(\App\Interfaces\Files\FileReferenceRepositoryInterface::class);
+        $this->mockDomainFileUsageClient = $this->createMock(\App\Interfaces\Files\DomainFileUsageClientInterface::class);
+        $this->mockDomainFileUsageClient->method('collectUsages')->willReturn([]);
 
         $binaryIngestion = new \App\Services\Files\FileBinaryIngestor(
             $this->mockFileRepository,
@@ -95,6 +100,8 @@ class FileServiceTest extends CIUnitTestCase
             $this->mockFileReferenceRepository,
             $this->mockFilePolicy,
             $binaryIngestion,
+            $this->mockDomainFileUsageClient,
+            new \App\Libraries\Files\FilePickerManifestCache(cache()),
         );
     }
 
@@ -135,7 +142,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
     }
 
     public function testUploadWithFileTooLargeThrowsValidationException(): void
@@ -149,7 +156,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
     }
 
     public function testUploadWithInvalidExtensionThrowsValidationException(): void
@@ -163,7 +170,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
     }
 
     public function testUploadSuccessfullyStoresFileAndReturnsCreated(): void
@@ -226,7 +233,7 @@ class FileServiceTest extends CIUnitTestCase
         $result = $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         $this->assertInstanceOf(\App\DTO\Response\Files\FileResponseDTO::class, $result);
         $data = $result->toArray();
@@ -282,7 +289,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         @unlink($tempFile);
     }
@@ -309,7 +316,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         @unlink($tempFile);
     }
@@ -333,7 +340,7 @@ class FileServiceTest extends CIUnitTestCase
                     'mime_type' => 'application/pdf',
                 ]),
                 'user_id' => 1,
-            ], service('validation')));
+            ], service('validation')), $this->context());
             $this->fail('The repository exception must escape after compensation.');
         } catch (\RuntimeException $exception) {
             $this->assertSame('insert failed', $exception->getMessage());
@@ -377,7 +384,7 @@ class FileServiceTest extends CIUnitTestCase
             ]);
 
         $request = new \App\DTO\Request\Files\FileIndexRequestDTO(['user_id' => 1], service('validation'));
-        $result = $this->service->index($request);
+        $result = $this->service->index($request, $this->context());
         $payload = $result->toArray();
 
         $this->assertInstanceOf(\dcardenasl\Ci4ApiCore\Dto\PaginatedResponseDTO::class, $result);
@@ -409,7 +416,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->expectException(NotFoundException::class);
 
         $request = new \App\DTO\Request\Files\FileGetRequestDTO(['id' => 999, 'user_id' => 1], service('validation'));
-        $this->service->download($request);
+        $this->service->download($request, $this->context());
     }
 
     public function testDownloadOtherUsersFileThrowsAuthorizationException(): void
@@ -426,7 +433,7 @@ class FileServiceTest extends CIUnitTestCase
         $this->expectException(AuthorizationException::class);
 
         $request = new \App\DTO\Request\Files\FileGetRequestDTO(['id' => 1, 'user_id' => 1], service('validation'));
-        $this->service->download($request);
+        $this->service->download($request, $this->context());
     }
 
     public function testDownloadOwnFileReturnsSuccess(): void
@@ -443,9 +450,12 @@ class FileServiceTest extends CIUnitTestCase
         $this->mockFileRepository
             ->method('find')
             ->willReturn($file);
+        $this->mockStorage
+            ->method('url')
+            ->willReturn('http://example.com/myfile.pdf');
 
         $request = new \App\DTO\Request\Files\FileGetRequestDTO(['id' => 1, 'user_id' => 1], service('validation'));
-        $result = $this->service->download($request);
+        $result = $this->service->download($request, $this->context());
         $payload = $result->toArray();
 
         $this->assertInstanceOf(\App\DTO\Response\Files\FileDownloadResponseDTO::class, $result);
@@ -693,7 +703,7 @@ class FileServiceTest extends CIUnitTestCase
                 'mime_type' => 'image/png',
             ]),
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         $this->assertInstanceOf(\App\DTO\Response\Files\FileResponseDTO::class, $result);
         $this->assertEquals($filename, $result->toArray()['original_name']);
@@ -736,7 +746,7 @@ class FileServiceTest extends CIUnitTestCase
             'file' => $base64,
             'filename' => $dirtyFilename,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         $this->assertInstanceOf(\App\DTO\Response\Files\FileResponseDTO::class, $result);
         $this->assertSame($dirtyFilename, $result->toArray()['original_name']);
@@ -787,7 +797,7 @@ class FileServiceTest extends CIUnitTestCase
         $result = $this->service->upload(new \App\DTO\Request\Files\FileUploadRequestDTO([
             'file' => $mockFile,
             'user_id' => 1,
-        ], service('validation')));
+        ], service('validation')), $this->context());
 
         $this->assertInstanceOf(\App\DTO\Response\Files\FileResponseDTO::class, $result);
         $this->assertSame($dirtyFilename, $result->toArray()['original_name']);
@@ -1025,6 +1035,15 @@ class FileServiceTest extends CIUnitTestCase
     }
 
     // ==================== HELPER METHODS ====================
+
+    private function context(int $userId = 1): \dcardenasl\Ci4ApiCore\Dto\SecurityContext
+    {
+        return new \dcardenasl\Ci4ApiCore\Dto\SecurityContext(
+            $userId,
+            [],
+            ['files.read', 'files.write'],
+        );
+    }
 
     /**
      * Create a mock UploadedFile object

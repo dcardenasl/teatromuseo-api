@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Iam;
 
+use App\Models\PermissionModel;
+use App\Models\RoleModel;
+use App\Models\RolePermissionModel;
 use App\Services\System\SecurityAuditLogger;
-use CodeIgniter\Database\ConnectionInterface;
 use dcardenasl\Ci4ApiCore\Services\Iam\AbstractIamAuthorizationService;
 
 /**
@@ -26,13 +28,12 @@ class IamAuthorizationService extends AbstractIamAuthorizationService
     public const ADMIN_PERMISSION       = 'iam.admin-access';
     public const DEFAULT_APPLICATION_ID = 1;
 
-    /**
-     * @param ConnectionInterface<object, object> $db
-     */
     public function __construct(
         EffectivePermissionsResolver $resolver,
         SecurityAuditLogger $audit,
-        private readonly ConnectionInterface $db,
+        private readonly RoleModel $roleModel,
+        private readonly PermissionModel $permissionModel,
+        private readonly RolePermissionModel $rolePermissionModel,
     ) {
         parent::__construct($resolver, $audit);
     }
@@ -49,10 +50,7 @@ class IamAuthorizationService extends AbstractIamAuthorizationService
 
     protected function loadRoleSystemFlag(int $roleId): bool
     {
-        $row  = $this->db->table('roles')->where('id', $roleId)->select('is_system')->get();
-        $data = $row === false ? null : $row->getRowArray();
-
-        return $data !== null && (int) ($data['is_system'] ?? 0) === 1;
+        return $this->roleModel->isSystemRole($roleId);
     }
 
     /**
@@ -61,19 +59,7 @@ class IamAuthorizationService extends AbstractIamAuthorizationService
      */
     protected function resolvePermissionCodes(array $permissionIds): array
     {
-        $query = $this->db->table('permissions')
-            ->whereIn('id', $permissionIds)
-            ->select('code')
-            ->get();
-
-        if ($query === false) {
-            return [];
-        }
-
-        return array_values(array_unique(array_map(
-            static fn (array $r) => (string) $r['code'],
-            $query->getResultArray()
-        )));
+        return $this->permissionModel->findCodesByIds(array_values($permissionIds));
     }
 
     /**
@@ -82,19 +68,15 @@ class IamAuthorizationService extends AbstractIamAuthorizationService
      */
     protected function resolveRolePermissionCodes(array $roleIds): array
     {
-        $query = $this->db->table('role_permissions rp')
-            ->select('p.code')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->whereIn('rp.role_id', $roleIds)
-            ->get();
+        $byRole = $this->rolePermissionModel->getPermissionCodesByRoleIds(array_values($roleIds));
 
-        if ($query === false) {
-            return [];
+        $codes = [];
+        foreach ($byRole as $roleCodes) {
+            foreach ($roleCodes as $code) {
+                $codes[] = $code;
+            }
         }
 
-        return array_values(array_unique(array_map(
-            static fn (array $r) => (string) $r['code'],
-            $query->getResultArray()
-        )));
+        return array_values(array_unique($codes));
     }
 }

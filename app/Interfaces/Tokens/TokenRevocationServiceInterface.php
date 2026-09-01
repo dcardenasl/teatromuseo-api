@@ -25,7 +25,10 @@ interface TokenRevocationServiceInterface
     public function revokeAccessToken(RevokeAccessTokenRequestDTO $request, ?SecurityContext $context = null): bool;
 
     /**
-     * Check if a token is revoked
+     * Check if a token is revoked.
+     *
+     * Only positive results are cached; a negative lookup must never hide a
+     * revocation that was committed after the lookup.
      */
     public function isRevoked(string $jti): bool;
 

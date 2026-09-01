@@ -20,7 +20,7 @@ For cross-repo context (current milestone, blocked tasks), read `../TASKS.md`.
 
 ### Development Server
 ```bash
-php spark serve                  # Start dev server at http://localhost:8080
+php spark serve                  # Start dev server at http://localhost:8180
 ```
 
 ### Testing
@@ -91,7 +91,7 @@ Key components:
 - `app/Services/Iam/EffectivePermissionsResolver.php` — derives a user's effective permission codes from `user_roles → roles → role_permissions → permissions`.
 - `app/Models/UserRoleModel.php` — the join model for user↔role assignments.
 - `SessionManager::generateSessionResponse()` — embeds `permissions: string[]` in the `user` object of the login/refresh response, and the JWT carries a `scope` claim with the same codes.
-- `app/Database/Seeds/RbacBootstrapSeeder.php` — idempotent seeder for the `self` application, the canonical permission set (`users.read/write`, `files.read/write`, `audit.read`, `metrics.read`, `apikeys.read/write`, `iam.admin-access`, `iam.superadmin-access`), and the three system roles (`superadmin`, `admin`, `user`) with their default permission grants. Must run before `php spark users:bootstrap-superadmin`, which now attaches the `superadmin` role via a `user_roles` row.
+- `app/Database/Seeds/RbacBootstrapSeeder.php` — idempotent seeder for the `self` application, the canonical permission set (`users.read/write`, `files.read/write/admin`, `audit.read`, `metrics.read`, `apikeys.read/write`, `iam.admin-access`, `iam.superadmin-access`), and the three system roles (`superadmin`, `admin`, `user`) with their default permission grants. `files.admin` is reserved for cross-owner file mutations; the self-assignable `user` role never receives it. Must run before `php spark users:bootstrap-superadmin`, which now attaches the `superadmin` role via a `user_roles` row.
 
 REST endpoints live under `/api/v1/iam/` (all gated by `permission:iam.admin-access`):
 - `roles` CRUD + `roles/{id}/permissions` (list/attach/detach)
@@ -226,7 +226,7 @@ In non-TTY environments (Claude Code, CI/CD, parallel calls), `php spark make:cr
 Adding a new route file (`app/Config/Routes/v1/{domain}.php`) requires restarting `php spark serve`. Routes are not detected hot.
 
 ```bash
-pkill -f 'spark serve'; php spark serve --port 8080 &
+pkill -f 'spark serve'; php spark serve --port 8180 &
 ```
 
 ## Adding a Gallery to a Domain

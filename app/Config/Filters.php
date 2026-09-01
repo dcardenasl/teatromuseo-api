@@ -39,6 +39,13 @@ class Filters extends BaseFilters
         if (ENVIRONMENT === 'testing') {
             $this->aliases['jwtauth'] = \App\Filters\TestAuthFilter::class;
         }
+
+        // Avoid even invoking the global request logger when it is disabled.
+        // The filter also guards itself, but removing it here avoids the
+        // per-request filter dispatch on production shared hosting.
+        if (! config('Api')->requestLoggingEnabled) {
+            unset($this->globals['after']['requestLogging']);
+        }
     }
 
     /**

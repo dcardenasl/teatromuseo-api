@@ -18,31 +18,33 @@ Si tienes el JWT o su claim `jti`:
 # Decodear el token para sacar su `jti`.
 echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r .jti
 
-# Revocar.
+# Revocar. Usar la tabla real de blacklist del Hub y el timestamp de expiración del JWT.
 mysql "$DB_NAME" -e "
-  INSERT INTO token_revocations (jti, user_id, revoked_at, reason)
-  VALUES ('<jti>', <user_id>, NOW(), 'incident-response: leaked token');
+  INSERT INTO token_blacklist (token_jti, expires_at, created_at)
+  VALUES ('<jti>', FROM_UNIXTIME(<jwt_exp>), NOW());
 "
 ```
 
-La próxima request con este JWT fallará en el chequeo de revocación de `JwtAuthFilter`. El `Config\Api::$jwtRevocationCacheTtl` (default 60s) implica hasta 60s de gracia; para incidente caliente, bustear el caché:
-
-```bash
-php spark cache:clear
-```
+La próxima request con este JWT fallará en el chequeo de revocación de
+`JwtAuthFilter`. Las búsquedas negativas de la blacklist no se cachean, por lo
+que la revocación nueva es visible de inmediato.
 
 Si solo tienes el `user_id` (no el contenido del token filtrado):
 
 ```bash
 # Revocar TODOS los refresh tokens del usuario. Será forzado a re-autenticarse.
 mysql "$DB_NAME" -e "
+  START TRANSACTION;
   UPDATE refresh_tokens
-  SET revoked_at = NOW(), revoked_reason = 'incident-response: blanket revoke'
+  SET revoked_at = NOW(), revoked_reason = 'revoke_all'
   WHERE user_id = <user_id> AND revoked_at IS NULL;
+  UPDATE users
+  SET auth_token_version = auth_token_version + 1
+  WHERE id = <user_id>;
+  COMMIT;
 "
-# Los access tokens en flight expiran solos por JWT_ACCESS_TOKEN_TTL
-# (default 1h). Para invalidación completa en <60s, además rotar el
-# secret de firma JWT (ver runbook 01).
+# El incremento de versión invalida los JWT de usuario ya emitidos en la
+# siguiente solicitud.
 ```
 
 ### Paso 2 — Suspender al usuario (si se sospecha compromiso de cuenta)
@@ -50,12 +52,12 @@ mysql "$DB_NAME" -e "
 ```bash
 mysql "$DB_NAME" -e "
   UPDATE users
-  SET status = 'suspended', suspended_at = NOW(), suspended_reason = 'incident-response'
+  SET status = 'suspended'
   WHERE id = <user_id>;
 "
 ```
 
-`UserAccountGuard::assertCanAuthenticate()` rechaza usuarios suspended en cada login; combinado con revocar tokens deja la cuenta totalmente locked-out.
+`UserAccountGuard::assertCanAuthenticate()` rechaza usuarios suspendidos en cada login; combinado con revocar tokens e incrementar `auth_token_version`, deja la cuenta totalmente bloqueada.
 
 ### Paso 3 — Capturar audit trail
 
@@ -131,7 +133,7 @@ El token filtrado es síntoma; investigar cómo salió.
 | Token visible en logs HTTP de acceso | Auditar `Config\Logger::$threshold`. Confirmar que `JwtAuthFilter` y `RequestLoggingFilter` redactan `Authorization`. |
 | Token en error report (Sentry / similar) | El SDK PHP de Sentry redacta `Authorization` por default; verificar en `MonologHandler`. Agregar `data_scrubber` config si falta. |
 | Usuario pegó token a soporte chat / repo público | Educación + este runbook publicado. Sin fix técnico más allá de revocación rápida. |
-| Token sobrevivió ventana sospechosa de refresh | Investigar `RefreshTokenService::rotate()` — confirmar que el rotated token revoca al padre atómicamente. |
+| Token sobrevivió la ventana sospechosa de refresco | Investigar `RefreshTokenService` — confirmar que el token rotado lleva `revoked_reason=rotated` y que la detección de reutilización revocó la cuenta. |
 | Brute-force / credential stuffing llevó a login legítimo | Verificar conteos de `auth_login_failed` en `audit_logs`. Apretar thresholds de `AuthThrottleFilter` si necesario. |
 
 ### Decidir si rotar el secret global
@@ -146,7 +148,7 @@ Una vez contenida la causa raíz:
 # Re-habilitar al usuario (si la suspensión fue preventiva).
 mysql "$DB_NAME" -e "
   UPDATE users
-  SET status = 'active', suspended_at = NULL, suspended_reason = NULL
+  SET status = 'active'
   WHERE id = <user_id>;
 "
 ```

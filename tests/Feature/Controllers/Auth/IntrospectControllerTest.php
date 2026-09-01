@@ -96,6 +96,25 @@ class IntrospectControllerTest extends ApiTestCase
         $this->assertSame('revoked', $json['data']['error']);
     }
 
+    public function testIntrospectRejectsTokenAfterAccountWideVersionBump(): void
+    {
+        $userId = $this->createUser('introspect-versioned@example.com', 'ValidPass123!');
+        $rawKey = $this->createActiveApiKey();
+        $token = Services::jwtService()->encode($userId, ['users.read']);
+
+        Services::tokenVersionService()->increment($userId);
+
+        $result = $this->withHeaders(['X-App-Key' => $rawKey])
+            ->withBodyFormat('json')
+            ->post('/api/v1/auth/introspect', ['token' => $token]);
+
+        $result->assertStatus(200);
+        $json = $this->getResponseJson($result);
+
+        $this->assertFalse($json['data']['valid']);
+        $this->assertSame('revoked', $json['data']['error']);
+    }
+
     public function testIntrospectMalformedTokenReturnsInvalid(): void
     {
         $rawKey = $this->createActiveApiKey();

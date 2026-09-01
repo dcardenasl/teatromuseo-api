@@ -31,7 +31,7 @@ class AuthTokenService implements \App\Interfaces\Tokens\AuthTokenServiceInterfa
      */
     public function refreshAccessToken(\App\DTO\Request\Identity\RefreshTokenRequestDTO $request, ?SecurityContext $context = null): \dcardenasl\Ci4ApiCore\Dto\DataTransferObjectInterface
     {
-        return $this->refreshTokenService->refreshAccessToken($request);
+        return $this->refreshTokenService->refreshAccessToken($request, $context);
     }
 
     /**

@@ -6,6 +6,7 @@ namespace App\Interfaces\Tokens;
 
 use App\DTO\Request\Identity\RefreshTokenRequestDTO;
 use App\DTO\Response\Identity\TokenResponseDTO;
+use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Support\OperationResult;
 
 /**
@@ -23,7 +24,7 @@ interface RefreshTokenServiceInterface
     /**
      * Refresh access token using refresh token
      */
-    public function refreshAccessToken(RefreshTokenRequestDTO $request): TokenResponseDTO;
+    public function refreshAccessToken(RefreshTokenRequestDTO $request, ?SecurityContext $context = null): TokenResponseDTO;
 
     /**
      * Revoke a refresh token

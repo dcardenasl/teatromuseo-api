@@ -34,7 +34,27 @@ trait FileDomainServices
             static::fileReferenceRepository(),
             static::filePolicyService(),
             $binaryIngestion,
+            static::domainFileUsageClient(),
+            new \App\Libraries\Files\FilePickerManifestCache(static::cache()),
         );
+    }
+
+    public static function filePickerManifestCache(bool $getShared = true): \App\Libraries\Files\FilePickerManifestCache
+    {
+        if ($getShared) {
+            return static::getSharedInstance('filePickerManifestCache');
+        }
+
+        return new \App\Libraries\Files\FilePickerManifestCache(static::cache());
+    }
+
+    public static function domainFileUsageClient(bool $getShared = true): \App\Interfaces\Files\DomainFileUsageClientInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('domainFileUsageClient');
+        }
+
+        return new \App\Libraries\Domains\DomainFileUsageClient(config('DomainWebhooks'));
     }
 
     public static function filePolicyService(bool $getShared = true): \App\Interfaces\Files\FilePolicyServiceInterface
@@ -52,9 +72,7 @@ trait FileDomainServices
             return static::getSharedInstance('fileResponseMapper');
         }
 
-        return new \dcardenasl\Ci4ApiCore\Mappers\DtoResponseMapper(
-            \App\DTO\Response\Files\FileResponseDTO::class
-        );
+        return new \App\Mappers\Files\FileResponseMapper(static::storageManager());
     }
 
     public static function virusScannerService(bool $getShared = true): \App\Interfaces\Files\VirusScannerServiceInterface
@@ -63,10 +81,9 @@ trait FileDomainServices
             return static::getSharedInstance('virusScannerService');
         }
 
-        return new \App\Services\Files\ClamAvScannerService(
+        return new \App\Services\Files\NullVirusScannerService(
             static::logger(),
             (bool) env('FILES_VIRUS_SCAN_ENABLED', false),
-            (string) env('FILES_CLAMAV_ADDRESS', 'tcp://127.0.0.1:3310')
         );
     }
 

@@ -97,6 +97,16 @@ class StorageManager
     }
 
     /**
+     * Return the application-relative URL for a local public upload.
+     *
+     * This value is safe to persist because it contains no deployment host.
+     */
+    public function relativeUrl(string $path): string
+    {
+        return '/uploads/' . ltrim($path, '/');
+    }
+
+    /**
      * Get file size
      *
      * @param string $path Path to the file

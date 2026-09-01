@@ -156,5 +156,14 @@ class LocalDriverTest extends CIUnitTestCase
 
         $this->assertTrue($result);
         $this->assertTrue($this->driver->exists('nested/dir/test.txt'));
+
+        $nestedPath = $this->testPath . 'nested';
+        $nestedDir = $nestedPath . '/dir';
+
+        $this->assertTrue(is_dir($nestedPath));
+        $this->assertEquals('0755', substr(sprintf('%o', fileperms($nestedPath)), -4));
+
+        $this->assertTrue(is_dir($nestedDir));
+        $this->assertEquals('0755', substr(sprintf('%o', fileperms($nestedDir)), -4));
     }
 }

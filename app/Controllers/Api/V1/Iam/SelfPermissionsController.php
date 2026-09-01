@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Controllers\Api\V1\Iam;
 
-use App\Libraries\Iam\SelfPermissionService;
-use CodeIgniter\Controller;
+use App\DTO\Request\Iam\SelfPermissionsRequestDTO;
 use CodeIgniter\HTTP\ResponseInterface;
+use Config\Services;
+use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
+use dcardenasl\Ci4ApiCore\Http\ApiController;
 use dcardenasl\Ci4ApiCore\Http\ApiRequest;
-use dcardenasl\Ci4ApiCore\Http\ApiResponse;
 
 /**
  * POST /api/v1/iam/self-permissions
@@ -18,54 +19,36 @@ use dcardenasl\Ci4ApiCore\Http\ApiResponse;
  * the app's code: an app with code "catalog" may only register "catalog.*".
  *
  * Idempotent — already-registered codes are counted as "existing" and skipped.
- *
- * Request body:
- *   {
- *     "permissions": [
- *       { "code": "catalog.read", "resource": "catalog", "action": "read", "description": "..." }
- *     ]
- *   }
- *
- * Response 200:
- *   { "status": "success", "data": { "created": N, "existing": N, "rejected": N, "errors": [...] } }
  */
-class SelfPermissionsController extends Controller
+class SelfPermissionsController extends ApiController
 {
+    protected function resolveDefaultService(): object
+    {
+        return Services::selfPermissionService();
+    }
+
     public function sync(): ResponseInterface
     {
-        /** @var ApiRequest $request */
-        $request = service('request');
+        return $this->handleRequest(
+            function (SelfPermissionsRequestDTO $dto, SecurityContext $context): array {
+                /** @var ApiRequest $request */
+                $request = service('request');
+                $appId = $request instanceof ApiRequest ? $request->getAppId() : null;
 
-        $appId = $request instanceof ApiRequest ? $request->getAppId() : null;
-        if ($appId === null) {
-            return $this->response
-                ->setStatusCode(401)
-                ->setJSON(ApiResponse::unauthorized('X-App-Key required'));
-        }
+                if ($appId === null) {
+                    // AppKeyRequiredFilter should prevent reaching here;
+                    // guard defensively without ResponseInterface leak.
+                    return [];
+                }
 
-        $raw  = $request->getJSON(assoc: true);
-        $body = is_array($raw) ? $raw : [];
+                /** @var list<array<string, string>> $permissions */
+                $permissions = is_array($dto->permissions) ? array_values($dto->permissions) : [];
+                $service = Services::selfPermissionService();
+                $result = $service->sync($appId, $permissions);
 
-        $permissions = isset($body['permissions']) && is_array($body['permissions'])
-            ? $body['permissions']
-            : null;
-
-        if ($permissions === null) {
-            return $this->response
-                ->setStatusCode(422)
-                ->setJSON(ApiResponse::validationError(['permissions' => 'Must be an array']));
-        }
-
-        /** @var list<array<string, string>> $permissions */
-        $service = new SelfPermissionService(
-            model(\App\Models\PermissionModel::class),
-            model(\App\Models\ApplicationModel::class),
+                return $result->toArray();
+            },
+            SelfPermissionsRequestDTO::class
         );
-
-        $result = $service->sync($appId, $permissions);
-
-        return $this->response
-            ->setStatusCode(200)
-            ->setJSON(ApiResponse::success($result->toArray()));
     }
 }

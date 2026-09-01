@@ -96,7 +96,7 @@
             "@test:prepare-db",
             "phpunit --configuration=phpunit.xml --testdox"
         ],
-        "coverage:check": "php scripts/check-coverage.php 47.15 tests/coverage/clover.xml",
+        "coverage:check": "php scripts/check-coverage.php 60 tests/coverage/clover.xml",
         "phpstan": "phpstan analyse --memory-limit=512M",
         "cs-fix": "php-cs-fixer fix",
         "cs-check": "php-cs-fixer fix --dry-run --diff --sequential",

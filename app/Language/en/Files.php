@@ -27,6 +27,7 @@ return [
     'malware_detected'    => 'Malware or virus detected in the uploaded file',
     'temp_file_creation_failed' => 'Failed to create temporary file for virus scanning',
     'virus_scan_read_error' => 'Unable to read file for virus scanning',
+    'virus_scan_unavailable' => 'Virus scanning is enabled, but no scanner is configured',
 
     // Request messages
     'invalid_request'     => 'Invalid request',
@@ -41,6 +42,8 @@ return [
     'already_trashed'  => 'File is already in the trash',
     'not_trashed'      => 'File is not in the trash',
     'bulk_ids_required' => 'A non-empty list of file ids is required',
+    'max_batch_ids' => 'A maximum of 200 file IDs may be resolved at once.',
+    'max_batch_ids_hint' => 'Reduce the batch to 200 IDs or fewer.',
     'bulk_item_failed' => 'Operation failed for this file',
 
     // File references

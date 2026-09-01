@@ -68,6 +68,23 @@ class MetricsController extends ApiController
         return $this->handleRequest('getTimeseries', MetricsQueryRequestDTO::class);
     }
 
+    /**
+     * Return the summary and trend series for one validated period.
+     *
+     * The Hub remains the owner of both metric read models. This endpoint
+     * removes the Admin's transport fan-out without pretending the two
+     * aggregates are the same metric or sharing their failure semantics.
+     */
+    public function workspace(): ResponseInterface
+    {
+        return $this->handleRequest(function (MetricsQueryRequestDTO $request, ?\dcardenasl\Ci4ApiCore\Dto\SecurityContext $context): array {
+            return [
+                'summary' => $this->metricsService->getOverview($request, $context)->toArray(),
+                'timeseries' => $this->metricsService->getTimeseries($request, $context)->toArray(),
+            ];
+        }, MetricsQueryRequestDTO::class);
+    }
+
 
     /**
      * Get custom metrics by name

@@ -31,10 +31,12 @@ class Database extends Config
         'hostname'    => 'localhost',
         'username'    => 'root',
         'password'    => 'root',
-        'database'    => 'ci4_website_builder_api',
+        'database'    => 'teatromuseo_api',
         'DBDriver'    => 'MySQLi',
         'DBPrefix'    => '',
-        'pConnect'    => false,
+        // Reuse the MySQL connection in production; keep tests and local
+        // development isolated.
+        'pConnect'    => ENVIRONMENT === 'production',
         'DBDebug'     => ENVIRONMENT !== 'production',
         'charset'     => 'utf8mb4',
         'DBCollat'    => 'utf8mb4_general_ci',

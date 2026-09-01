@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Iam;
 
 use App\DTO\Request\Iam\AttachPermissionsRequestDTO;
-use CodeIgniter\Database\ConnectionInterface;
+use App\Models\PermissionModel;
+use App\Models\RoleModel;
+use App\Models\RolePermissionModel;
 use dcardenasl\Ci4ApiCore\Dto\SecurityContext;
 use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
 
@@ -21,11 +23,10 @@ use dcardenasl\Ci4ApiCore\Exceptions\NotFoundException;
  */
 class RolePermissionAssignmentService
 {
-    /**
-     * @param ConnectionInterface<object, object> $db
-     */
     public function __construct(
-        private readonly ConnectionInterface $db,
+        private readonly RolePermissionModel $rolePermissionModel,
+        private readonly RoleModel $roleModel,
+        private readonly PermissionModel $permissionModel,
         private readonly IamAuthorizationService $authz,
         private readonly EffectivePermissionsResolver $effectivePermissions
     ) {
@@ -59,18 +60,11 @@ class RolePermissionAssignmentService
         }
 
         if ($toAdd !== []) {
-            $rows = array_map(
-                static fn (int $pid) => ['role_id' => $roleId, 'permission_id' => $pid],
-                $toAdd
-            );
-            $this->db->table('role_permissions')->insertBatch($rows);
+            $this->rolePermissionModel->insertPairs($roleId, $toAdd);
         }
 
         if ($toRemove !== []) {
-            $this->db->table('role_permissions')
-                ->where('role_id', $roleId)
-                ->whereIn('permission_id', $toRemove)
-                ->delete();
+            $this->rolePermissionModel->deletePairsForRole($roleId, $toRemove);
         }
 
         if ($toAdd !== [] || $toRemove !== []) {
@@ -83,21 +77,12 @@ class RolePermissionAssignmentService
      */
     public function getPermissionIds(int $roleId)
     {
-        $result = $this->db->table('role_permissions')
-            ->select('permission_id')
-            ->where('role_id', $roleId)
-            ->get();
-
-        $rows = $result === false ? [] : $result->getResultArray();
-
-        return array_values(array_map(static fn (array $r) => (int) $r['permission_id'], $rows));
+        return $this->rolePermissionModel->getPermissionIdsForRole($roleId);
     }
 
     private function ensureRoleExists(int $roleId): void
     {
-        $result = $this->db->table('roles')->where('id', $roleId)->select('id')->limit(1)->get();
-        $row    = $result === false ? null : $result->getRowArray();
-        if ($row === null) {
+        if (! $this->roleModel->existsById($roleId)) {
             throw new NotFoundException(lang('Api.resourceNotFound'));
         }
     }
@@ -107,12 +92,7 @@ class RolePermissionAssignmentService
      */
     private function ensurePermissionsExist(array $permissionIds): void
     {
-        $result = $this->db->table('permissions')
-            ->whereIn('id', $permissionIds)
-            ->select('id')->get();
-
-        $rows = $result === false ? [] : $result->getResultArray();
-        $foundIds = array_map(static fn (array $r) => (int) $r['id'], $rows);
+        $foundIds = $this->permissionModel->findExistingIds($permissionIds);
 
         if (count(array_unique($foundIds)) !== count($permissionIds)) {
             throw new NotFoundException(lang('Api.resourceNotFound'));

@@ -27,6 +27,7 @@ return [
     'malware_detected'    => 'Se detectó malware o virus en el archivo subido',
     'temp_file_creation_failed' => 'No se pudo crear un archivo temporal para el escaneo de virus',
     'virus_scan_read_error' => 'No se puede leer el archivo para el escaneo de virus',
+    'virus_scan_unavailable' => 'El escaneo de virus está habilitado, pero no hay ningún escáner configurado',
 
     // Mensajes de solicitud
     'invalid_request'     => 'Solicitud inválida',
@@ -41,6 +42,8 @@ return [
     'already_trashed'  => 'El archivo ya está en la papelera',
     'not_trashed'      => 'El archivo no está en la papelera',
     'bulk_ids_required' => 'Se requiere una lista no vacía de IDs de archivos',
+    'max_batch_ids' => 'Se puede resolver un máximo de 200 IDs de archivos por lote.',
+    'max_batch_ids_hint' => 'Reduce el lote a 200 IDs o menos.',
     'bulk_item_failed' => 'La operación falló para este archivo',
 
     // Referencias de archivos

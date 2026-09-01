@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Iam;
 
+use App\Models\PermissionModel;
+use App\Models\UserRoleModel;
 use CodeIgniter\Cache\CacheInterface;
-use CodeIgniter\Database\ConnectionInterface;
 use dcardenasl\Ci4ApiCore\Contracts\Iam\PermissionResolverInterface;
 
 /**
@@ -25,11 +26,9 @@ class EffectivePermissionsResolver implements PermissionResolverInterface
 {
     private const CACHE_TTL = 60;
 
-    /**
-     * @param ConnectionInterface<object, object> $db
-     */
     public function __construct(
-        private readonly ConnectionInterface $db,
+        private readonly UserRoleModel $userRoleModel,
+        private readonly PermissionModel $permissionModel,
         private readonly CacheInterface $cache
     ) {
     }
@@ -91,57 +90,15 @@ class EffectivePermissionsResolver implements PermissionResolverInterface
     private function load(int $userId, int $applicationId): array
     {
         if ($this->userIsSuperadmin($userId)) {
-            return $this->loadAllApplicationCodes($applicationId);
+            return $this->permissionModel->findCodesByApplication($applicationId);
         }
 
-        $query = $this->db->table('user_roles ur')
-            ->select('p.code')
-            ->distinct()
-            ->join('role_permissions rp', 'rp.role_id = ur.role_id')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->where('ur.user_id', $userId)
-            ->where('p.application_id', $applicationId)
-            ->orderBy('p.code', 'ASC')
-            ->get();
-
-        if ($query === false) {
-            return [];
-        }
-
-        $rows = $query->getResultArray();
-
-        $codes = array_map(static fn (array $row) => (string) $row['code'], $rows);
-
-        return array_values(array_unique($codes));
+        return $this->userRoleModel->getPermissionCodesForUserAndApplication($userId, $applicationId);
     }
 
     private function userIsSuperadmin(int $userId): bool
     {
-        return $this->db->table('user_roles ur')
-            ->join('roles r', 'r.id = ur.role_id')
-            ->where('ur.user_id', $userId)
-            ->where('r.code', 'superadmin')
-            ->countAllResults() > 0;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function loadAllApplicationCodes(int $applicationId): array
-    {
-        $query = $this->db->table('permissions')
-            ->select('code')
-            ->where('application_id', $applicationId)
-            ->orderBy('code', 'ASC')
-            ->get();
-
-        if ($query === false) {
-            return [];
-        }
-
-        $rows = $query->getResultArray();
-
-        return array_values(array_unique(array_map(static fn (array $row): string => (string) $row['code'], $rows)));
+        return $this->userRoleModel->userHasRoleCode($userId, 'superadmin');
     }
 
     /**
@@ -150,38 +107,10 @@ class EffectivePermissionsResolver implements PermissionResolverInterface
     private function loadAll(int $userId): array
     {
         if ($this->userIsSuperadmin($userId)) {
-            $query = $this->db->table('permissions')
-                ->select('code')
-                ->orderBy('code', 'ASC')
-                ->get();
-
-            if ($query === false) {
-                return [];
-            }
-
-            $rows = $query->getResultArray();
-
-            return array_values(array_unique(array_map(static fn (array $row): string => (string) $row['code'], $rows)));
+            return $this->permissionModel->findAllCodes();
         }
 
-        $query = $this->db->table('user_roles ur')
-            ->select('p.code')
-            ->distinct()
-            ->join('role_permissions rp', 'rp.role_id = ur.role_id')
-            ->join('permissions p', 'p.id = rp.permission_id')
-            ->where('ur.user_id', $userId)
-            ->orderBy('p.code', 'ASC')
-            ->get();
-
-        if ($query === false) {
-            return [];
-        }
-
-        $rows = $query->getResultArray();
-
-        $codes = array_map(static fn (array $row) => (string) $row['code'], $rows);
-
-        return array_values(array_unique($codes));
+        return $this->userRoleModel->getPermissionCodesForUser($userId);
     }
 
     private static function cacheKey(int $userId, int $applicationId): string

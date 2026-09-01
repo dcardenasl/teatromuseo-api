@@ -82,7 +82,9 @@ class ImageVariantProcessor
                             $variantSize = @getimagesize($tmpOutput);
                             $variants[$key] = [
                                 'path'   => $variantPath,
-                                'url'    => $storage->url($variantPath),
+                                // Variant URLs must remain portable too. The
+                                // response mapper resolves them at runtime.
+                                'url'    => $storage->relativeUrl($variantPath),
                                 'width'  => $variantSize !== false ? $variantSize[0] : $target['width'],
                                 'height' => $variantSize !== false ? $variantSize[1] : $target['height'],
                                 'bytes'  => strlen($variantContents),

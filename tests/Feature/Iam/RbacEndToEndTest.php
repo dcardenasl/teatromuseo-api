@@ -25,7 +25,11 @@ final class RbacEndToEndTest extends ApiTestCase
         $this->insertPermission($appId, 'cms-wildcard.widget.read', 'widget', 'read');
         $this->insertPermission($appId, 'cms-wildcard.widget.create', 'widget', 'create');
 
-        $resolver = new EffectivePermissionsResolver(\Config\Database::connect(), Services::cache());
+        $resolver = new EffectivePermissionsResolver(
+            model(\App\Models\UserRoleModel::class),
+            model(\App\Models\PermissionModel::class),
+            Services::cache()
+        );
 
         $this->assertSame(
             ['cms-wildcard.widget.create', 'cms-wildcard.widget.read'],
@@ -68,6 +72,23 @@ final class RbacEndToEndTest extends ApiTestCase
         $this->seed(\App\Database\Seeds\RbacBootstrapSeeder::class);
 
         $this->assertRoleHasPermission($superadminRoleId, $permissionId);
+    }
+
+    public function testRbacSeederKeepsFileAdminPermissionOutOfSelfAssignableUserRole(): void
+    {
+        $db = \Config\Database::connect();
+        $app = $db->table('applications')->where('code', 'self')->get()?->getRowArray();
+        $this->assertNotNull($app);
+
+        $filesAdminId = $this->permissionId((int) $app['id'], 'files.admin');
+        $this->assertGreaterThan(0, $filesAdminId);
+        $this->assertRoleHasPermission($this->roleId('admin'), $filesAdminId);
+
+        $userHasAdmin = $db->table('role_permissions')
+            ->where('role_id', $this->roleId('user'))
+            ->where('permission_id', $filesAdminId)
+            ->countAllResults();
+        $this->assertSame(0, $userHasAdmin);
     }
 
     public function testPermissionIndexAcceptsPerPageUpToFiveHundred(): void

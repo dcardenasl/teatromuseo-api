@@ -23,6 +23,7 @@ $routes->group('metrics', ['filter' => ['jwtauth', 'permission:metrics.read', 't
     $routes->get('requests', '\App\Controllers\Api\V1\Admin\MetricsController::requests');
     $routes->get('slow-requests', '\App\Controllers\Api\V1\Admin\MetricsController::slowRequests');
     $routes->get('timeseries', '\App\Controllers\Api\V1\Admin\MetricsController::timeseries');
+    $routes->get('workspace', '\App\Controllers\Api\V1\Admin\MetricsController::workspace');
     $routes->get('custom/(:segment)', '\App\Controllers\Api\V1\Admin\MetricsController::custom/$1');
     $routes->post('record', '\App\Controllers\Api\V1\Admin\MetricsController::record');
 });

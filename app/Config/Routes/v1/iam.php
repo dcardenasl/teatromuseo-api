@@ -29,6 +29,7 @@ $routes->group('iam', ['namespace' => '\App\Controllers\Api\V1\Iam'], function (
         $routes->get('role-permission-matrix', 'RolePermissionMatrixController::index');
         $routes->get('roles', 'RoleController::index');
         $routes->get('roles/(:num)', 'RoleController::show/$1');
+        $routes->get('roles/(:num)/workspace', 'RoleController::workspace/$1');
         $routes->post('roles', 'RoleController::create');
         $routes->put('roles/(:num)', 'RoleController::update/$1');
         $routes->delete('roles/(:num)', 'RoleController::delete/$1');

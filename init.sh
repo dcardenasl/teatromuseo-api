@@ -232,11 +232,11 @@ if [ "$SKIP_SERVER" = false ]; then
   case "$START_SERVER" in
     [Yy])
       print_header "Starting development server"
-      printf "Server at http://localhost:8080 — press Ctrl+C to stop.\n\n"
-      php spark serve
+      printf "Server at http://localhost:8180 — press Ctrl+C to stop.\n\n"
+      php spark serve --port 8180
       ;;
     *)
-      printf "Start server: php spark serve\n"
+      printf "Start server: php spark serve --port 8180\n"
       ;;
   esac
 fi

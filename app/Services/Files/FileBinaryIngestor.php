@@ -151,7 +151,9 @@ final class FileBinaryIngestor implements BinaryIngestionInterface
             'size' => $file->size,
             'storage_driver' => $this->storage->getDriverName(),
             'path' => $staged['path'],
-            'url' => $this->storage->url($staged['path']),
+            // Persist only a host-independent URL. The absolute URL is
+            // resolved from the active storage driver when responding.
+            'url' => $this->storage->relativeUrl($staged['path']),
             'metadata' => json_encode(array_filter([
                 'extension' => $file->extension,
                 'content_hash' => $staged['content_hash'],
